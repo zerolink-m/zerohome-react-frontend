@@ -1,0 +1,324 @@
+# API Specification - Stats Endpoints
+# Date: 26.10.2026 (v2)
+# New endpoints for application statistics
+
+## Statistics Endpoints
+
+All stats endpoints require **admin role** and are rate-limited to 20 requests per minute.
+
+---
+
+### Get All Statistics
+GET /v1/stats
+- Description: Get comprehensive application statistics
+- Auth: Required (admin only)
+- Rate limit: 20/min
+- Query params:
+  - period: int (optional, default=24, range 1-168) - Period in hours for motion stats
+- Response: {
+    "success": true,
+    "data": {
+      "system": {
+        "cpu_percent": float,
+        "memory": {
+          "used_mb": float,
+          "available_mb": float,
+          "total_mb": float,
+          "percent": float
+        },
+        "disk": {
+          "used_gb": float,
+          "free_gb": float,
+          "total_gb": float,
+          "percent": float
+        },
+        "network": {
+          "bytes_sent": int,
+          "bytes_recv": int,
+          "packets_sent": int,
+          "packets_recv": int
+        },
+        "uptime_seconds": int
+      },
+      "streams": {
+        "active_streams": {
+          "hls": int,
+          "webrtc": int,
+          "legacy": int,
+          "total": int
+        },
+        "total_clients": int
+      },
+      "cameras": {
+        "total": int,
+        "enabled": int,
+        "disabled": int,
+        "onvif_enabled": int,
+        "ptz_enabled": int,
+        "recording_enabled": int
+      },
+      "recordings": {
+        "total_recordings": int,
+        "total_size_gb": float,
+        "total_size_bytes": int
+      },
+      "motion": {
+        "period_hours": int,
+        "total_events": int,
+        "events_by_object": {
+          "person": int,
+          "car": int,
+          "dog": int,
+          "cat": int
+        },
+        "avg_confidence": float,
+        "license_plates_detected": int,
+        "top_cameras": [
+          {
+            "cam_id": int,
+            "events": int
+          }
+        ]
+      },
+      "users": {
+        "total_users": int,
+        "active_sessions": int,
+        "active_shares": int
+      },
+      "errors": {
+        "errors_by_type": {
+          "error_name": int
+        },
+        "http_4xx": int,
+        "http_5xx": int,
+        "rtsp_failures": int,
+        "onvif_failures": int
+      },
+      "performance": {
+        "endpoints": {
+          "endpoint_name": {
+            "count": int,
+            "avg_ms": float,
+            "min_ms": float,
+            "max_ms": float
+          }
+        },
+        "snapshots": {
+          "onvif": {
+            "count": int,
+            "avg_ms": float,
+            "min_ms": float,
+            "max_ms": float
+          },
+          "rtsp": {
+            "count": int,
+            "avg_ms": float,
+            "min_ms": float,
+            "max_ms": float
+          }
+        }
+      }
+    }
+  }
+
+---
+
+### Get System Statistics
+GET /v1/stats/system
+- Description: Get system resource usage (CPU, RAM, Disk, Network)
+- Auth: Required (admin only)
+- Rate limit: 20/min
+- Response: {
+    "success": true,
+    "data": {
+      "cpu_percent": float,
+      "memory": {
+        "used_mb": float,
+        "available_mb": float,
+        "total_mb": float,
+        "percent": float
+      },
+      "disk": {
+        "used_gb": float,
+        "free_gb": float,
+        "total_gb": float,
+        "percent": float
+      },
+      "network": {
+        "bytes_sent": int,
+        "bytes_recv": int,
+        "packets_sent": int,
+        "packets_recv": int
+      },
+      "uptime_seconds": int
+    }
+  }
+
+---
+
+### Get Stream Statistics
+GET /v1/stats/streams
+- Description: Get active streaming sessions statistics
+- Auth: Required (admin only)
+- Rate limit: 20/min
+- Response: {
+    "success": true,
+    "data": {
+      "active_streams": {
+        "hls": int,
+        "webrtc": int,
+        "legacy": int,
+        "total": int
+      },
+      "total_clients": int
+    }
+  }
+
+---
+
+### Get Camera Statistics
+GET /v1/stats/cameras
+- Description: Get camera counts and status
+- Auth: Required (admin only)
+- Rate limit: 20/min
+- Response: {
+    "success": true,
+    "data": {
+      "total": int,
+      "enabled": int,
+      "disabled": int,
+      "onvif_enabled": int,
+      "ptz_enabled": int,
+      "recording_enabled": int
+    }
+  }
+
+---
+
+### Get Recording Statistics
+GET /v1/stats/recordings
+- Description: Get recording storage statistics
+- Auth: Required (admin only)
+- Rate limit: 20/min
+- Response: {
+    "success": true,
+    "data": {
+      "total_recordings": int,
+      "total_size_gb": float,
+      "total_size_bytes": int
+    }
+  }
+
+---
+
+### Get Motion Detection Statistics
+GET /v1/stats/motion
+- Description: Get motion detection events statistics for specified period
+- Auth: Required (admin only)
+- Rate limit: 20/min
+- Query params:
+  - period: int (optional, default=24, range 1-168) - Period in hours
+- Response: {
+    "success": true,
+    "data": {
+      "period_hours": int,
+      "total_events": int,
+      "events_by_object": {
+        "person": int,
+        "car": int,
+        "dog": int,
+        "cat": int
+      },
+      "avg_confidence": float,
+      "license_plates_detected": int,
+      "top_cameras": [
+        {
+          "cam_id": int,
+          "events": int
+        }
+      ]
+    }
+  }
+
+---
+
+### Get User Statistics
+GET /v1/stats/users
+- Description: Get user and session statistics
+- Auth: Required (admin only)
+- Rate limit: 20/min
+- Response: {
+    "success": true,
+    "data": {
+      "total_users": int,
+      "active_sessions": int,
+      "active_shares": int
+    }
+  }
+
+---
+
+### Get Error Statistics
+GET /v1/stats/errors
+- Description: Get application error statistics
+- Auth: Required (admin only)
+- Rate limit: 20/min
+- Response: {
+    "success": true,
+    "data": {
+      "errors_by_type": {
+        "error_name": int
+      },
+      "http_4xx": int,
+      "http_5xx": int,
+      "rtsp_failures": int,
+      "onvif_failures": int
+    }
+  }
+
+---
+
+### Get Performance Statistics
+GET /v1/stats/performance
+- Description: Get endpoint performance metrics
+- Auth: Required (admin only)
+- Rate limit: 20/min
+- Response: {
+    "success": true,
+    "data": {
+      "endpoints": {
+        "endpoint_name": {
+          "count": int,
+          "avg_ms": float,
+          "min_ms": float,
+          "max_ms": float
+        }
+      },
+      "snapshots": {
+        "onvif": {
+          "count": int,
+          "avg_ms": float,
+          "min_ms": float,
+          "max_ms": float
+        },
+        "rtsp": {
+          "count": int,
+          "avg_ms": float,
+          "min_ms": float,
+          "max_ms": float
+        }
+      }
+    }
+  }
+
+---
+
+## Notes
+
+1. All endpoints return 403 Forbidden if user is not admin
+2. All endpoints are rate-limited to 20 requests per minute
+3. Motion statistics period can be configured from 1 to 168 hours (1 week)
+4. Active sessions are counted as sessions with activity in last 30 days
+5. Performance metrics keep last 1000 samples per endpoint/method
+6. Network statistics are cumulative since system boot
+7. Recording statistics scan actual filesystem for .mp4/.mkv/.avi files

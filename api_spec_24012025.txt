@@ -1,0 +1,717 @@
+================================================================================
+  ZeroCams API Specification - Multi-format Streaming Update
+  Version: 3.3.0
+  Date: 24.01.2025
+================================================================================
+
+НОВЫЕ ENDPOINTS
+================================================================================
+
+1. GET /v1/config/frontend/supported_streams
+   Получить список поддерживаемых форматов стриминга
+
+   Авторизация: НЕТ (публичный endpoint)
+
+   Response 200:
+   {
+     "code": "OK",
+     "data": {
+       "streams": [
+         {
+           "format": "fmp4",
+           "enabled": true,
+           "readonly": true,
+           "name": "Fragmented MP4",
+           "description": "Low latency streaming via HTTP",
+           "latency": "2-5s",
+           "endpoint": "/v1/cams/{id}/stream",
+           "mime_type": "video/mp4",
+           "features": ["low_latency", "seek", "pause"]
+         },
+         {
+           "format": "hls",
+           "enabled": true,
+           "readonly": false,
+           "name": "HLS (HTTP Live Streaming)",
+           "description": "Adaptive streaming for wide compatibility",
+           "latency": "6-30s",
+           "endpoint": "/v1/cams/{id}/hls/playlist.m3u8",
+           "mime_type": "application/vnd.apple.mpegurl",
+           "features": ["adaptive_bitrate", "wide_compatibility", "ios_native"]
+         },
+         {
+           "format": "webrtc",
+           "enabled": true,
+           "readonly": false,
+           "name": "WebRTC",
+           "description": "Ultra low latency P2P streaming",
+           "latency": "<1s",
+           "endpoint": "/v1/cams/{id}/webrtc",
+           "protocol": "websocket",
+           "features": ["ultra_low_latency", "p2p"]
+         }
+       ]
+     }
+   }
+
+   Описание полей:
+   - format: уникальный идентификатор формата (fmp4, hls, webrtc)
+   - enabled: включен ли формат на сервере
+   - readonly: можно ли отключить формат (fmp4 всегда true)
+   - name: отображаемое имя формата
+   - description: краткое описание
+   - latency: ожидаемая задержка стрима
+   - endpoint: шаблон URL для использования
+   - mime_type: MIME type для HTTP форматов
+   - protocol: "websocket" для WebRTC, иначе не указано
+   - features: массив ключевых особенностей формата
+
+   Примечание:
+   - Список форматов динамический, зависит от конфигурации сервера
+   - fmp4 всегда присутствует и enabled=true
+   - Используйте для выбора оптимального формата на клиенте
+
+
+2. GET /v1/cams/{id}/hls/playlist.m3u8
+   Получить HLS playlist для камеры
+
+   Авторизация: Bearer token ИЛИ ?token=<share_token>
+   Rate limit: 50 requests/min, cost=1
+
+   Path params:
+   - id (integer, required): ID камеры
+
+   Query params:
+   - token (string, optional): Share token для доступа без Authorization header
+
+   Headers:
+   - Authorization: Bearer <access_token> (если не используется ?token)
+
+   Response 200:
+   Content-Type: application/vnd.apple.mpegurl
+   Cache-Control: no-store, no-cache, must-revalidate, max-age=0
+
+   Body: HLS playlist (text/plain)
+   #EXTM3U
+   #EXT-X-VERSION:3
+   #EXT-X-TARGETDURATION:2
+   #EXT-X-MEDIA-SEQUENCE:0
+   #EXTINF:2.000000,
+   seg_0.ts
+   #EXTINF:2.000000,
+   seg_1.ts
+   ...
+
+   Response 400:
+   {
+     "code": "BAD_REQUEST",
+     "message": "HLS стриминг отключен"
+   }
+
+   Response 401:
+   {
+     "code": "UNAUTHORIZED",
+     "message": "Токен отсутствует, невалиден или истёк"
+   }
+
+   Response 404:
+   {
+     "code": "NOT_FOUND",
+     "message": "Камера не найдена"
+   }
+
+   Response 500:
+   {
+     "code": "SERVER_ERROR",
+     "message": "Не удалось создать HLS playlist (таймаут)"
+   }
+
+   Примечание:
+   - Доступен только если HLS_ENABLED=True
+   - Playlist обновляется динамически
+   - Клиент должен периодически запрашивать playlist для получения новых сегментов
+   - После получения playlist запрашивайте сегменты через /v1/cams/{id}/hls/{segment}.ts
+   - Idle timeout: стрим останавливается после 30 секунд без запросов
+
+
+3. GET /v1/cams/{id}/hls/{segment}
+   Получить HLS сегмент
+
+   Авторизация: Bearer token ИЛИ ?token=<share_token>
+   Rate limit: 50 requests/min, cost=1
+
+   Path params:
+   - id (integer, required): ID камеры
+   - segment (string, required): Имя сегмента (например: seg_0.ts, seg_1.ts)
+
+   Query params:
+   - token (string, optional): Share token для доступа
+
+   Headers:
+   - Authorization: Bearer <access_token> (если не используется ?token)
+
+   Response 200:
+   Content-Type: video/mp2t
+   Cache-Control: public, max-age=2073600 (24 дня)
+
+   Body: binary MPEG-TS segment
+
+   Response 400:
+   {
+     "code": "BAD_REQUEST",
+     "message": "HLS стриминг отключен"
+   }
+
+   Response 404:
+   {
+     "code": "NOT_FOUND",
+     "message": "Сегмент не найден"
+   }
+
+   Response 500:
+   {
+     "code": "SERVER_ERROR",
+     "message": "Ошибка чтения сегмента"
+   }
+
+   Примечание:
+   - segment должен содержать только имя файла без пути (валидация на path traversal)
+   - Сегменты кешируются на долгий срок (immutable после создания)
+   - Старые сегменты автоматически удаляются
+
+
+4. WS /v1/cams/{id}/webrtc
+   WebRTC signaling для ultra low latency стриминга
+
+   Авторизация: Query parameter ?token=<access_token_or_share_token>
+   Rate limit: 20 connections/min
+
+   Path params:
+   - id (integer, required): ID камеры
+
+   Query params:
+   - token (string, required): Access token или share token типа "stream"
+
+   WebSocket Protocol:
+
+   Client → Server messages:
+
+   1) Offer:
+   {
+     "type": "offer",
+     "sdp": "<SDP offer string>"
+   }
+
+   2) ICE Candidate:
+   {
+     "type": "ice_candidate",
+     "candidate": "<ICE candidate string>",
+     "sdpMid": "<media stream ID>",
+     "sdpMLineIndex": <number>
+   }
+
+   Server → Client messages:
+
+   1) Ready:
+   {
+     "type": "ready"
+   }
+
+   2) Answer:
+   {
+     "type": "answer",
+     "sdp": "<SDP answer string>"
+   }
+
+   3) Error:
+   {
+     "type": "error",
+     "message": "<error description>"
+   }
+
+   Connection Flow:
+   1. Client открывает WebSocket соединение
+   2. Server отправляет {"type": "ready"}
+   3. Client создает RTCPeerConnection и отправляет offer
+   4. Server обрабатывает offer и возвращает answer
+   5. Client и Server обмениваются ICE candidates
+   6. Устанавливается P2P соединение, начинается передача видео
+
+   WebSocket Close Codes:
+   - 1008: Ошибка авторизации или WebRTC отключен
+   - 1000: Нормальное закрытие
+
+   Примечание:
+   - Доступен только если WEBRTC_ENABLED=True
+   - Требует STUN/TURN сервер для работы через NAT
+   - Каждое подключение создает отдельный ffmpeg процесс
+   - Автоматическое закрытие при ошибке peer connection
+   - Не поддерживает broadcast (один процесс на клиента)
+
+
+ОБНОВЛЕННЫЕ ENDPOINTS
+================================================================================
+
+Существующий endpoint для fMP4 не изменился, но добавлено поле в документацию:
+
+GET /v1/cams/{id}/stream
+   Получить fMP4 video stream (без изменений)
+
+   Авторизация: Bearer token ИЛИ ?token=<share_token>
+   Rate limit: 30 requests/min, cost=10 (новая сессия) или 3 (attach к существующей)
+
+   [Остальная спецификация без изменений]
+
+   Примечание:
+   - Этот формат всегда доступен (не может быть отключен)
+   - Является базовым форматом для стриминга
+   - Для проверки других доступных форматов используйте GET /v1/config/frontend/supported_streams
+
+
+УДАЛЕННЫЕ ENDPOINTS
+================================================================================
+
+НЕТ - все существующие endpoints сохранены для обратной совместимости
+
+
+ИЗМЕНЕНИЯ В СУЩЕСТВУЮЩИХ МОДЕЛЯХ
+================================================================================
+
+Нет изменений в базовых моделях данных (Cam, User, Session и т.д.)
+
+
+ИНТЕГРАЦИЯ НА ФРОНТЕНДЕ
+================================================================================
+
+Рекомендуемый flow для выбора формата стриминга:
+
+1. При загрузке приложения:
+   GET /v1/config/frontend/supported_streams
+
+2. Выбор формата на основе:
+   - Требований к задержке (WebRTC < 1s, fMP4 2-5s, HLS 6-30s)
+   - Совместимости браузера (проверить features)
+   - Типа устройства (iOS → предпочтительно HLS)
+
+3. Использование выбранного формата:
+
+   a) HLS:
+      - Запросить GET /v1/cams/{id}/hls/playlist.m3u8
+      - Использовать HLS.js или нативный video player
+      - Периодически обновлять playlist (каждые 2-3 секунды)
+
+   b) WebRTC:
+      - Открыть WebSocket WS /v1/cams/{id}/webrtc?token=...
+      - Создать RTCPeerConnection с STUN/TURN servers
+      - Обработать signaling messages
+      - Отобразить stream в <video> через srcObject
+
+   c) fMP4:
+      - Запросить GET /v1/cams/{id}/stream
+      - Использовать MediaSource Extensions (MSE)
+      - Обработать fragmented MP4 chunks
+
+
+ПРИМЕРЫ КОДА
+================================================================================
+
+1. Discovery и выбор формата:
+
+JavaScript:
+```javascript
+// Получить доступные форматы
+const response = await fetch('/v1/config/frontend/supported_streams');
+const { data } = await response.json();
+
+// Функция выбора оптимального формата
+function selectBestFormat(streams, requirements) {
+  if (requirements.ultraLowLatency) {
+    const webrtc = streams.find(s => s.format === 'webrtc' && s.enabled);
+    if (webrtc) return webrtc;
+  }
+
+  if (requirements.iosCompatibility || /iPad|iPhone|iPod/.test(navigator.userAgent)) {
+    const hls = streams.find(s => s.format === 'hls' && s.enabled);
+    if (hls) return hls;
+  }
+
+  // Fallback to fMP4
+  return streams.find(s => s.format === 'fmp4');
+}
+
+const selectedFormat = selectBestFormat(data.streams, {
+  ultraLowLatency: false,
+  iosCompatibility: true
+});
+
+console.log('Using format:', selectedFormat.format);
+```
+
+2. HLS Player:
+
+HTML:
+```html
+<video id="video" controls></video>
+<script src="https://cdn.jsdelivr.net/npm/hls.js@latest"></script>
+```
+
+JavaScript:
+```javascript
+const video = document.getElementById('video');
+const camId = 1;
+const token = 'your_access_token';
+
+if (Hls.isSupported()) {
+  const hls = new Hls({
+    xhrSetup: function(xhr, url) {
+      // Можно использовать header или query parameter
+      xhr.setRequestHeader('Authorization', `Bearer ${token}`);
+    }
+  });
+
+  hls.loadSource(`/v1/cams/${camId}/hls/playlist.m3u8`);
+  hls.attachMedia(video);
+
+  hls.on(Hls.Events.MANIFEST_PARSED, function() {
+    video.play();
+  });
+
+  hls.on(Hls.Events.ERROR, function(event, data) {
+    if (data.fatal) {
+      console.error('HLS fatal error:', data);
+      // Fallback to another format
+    }
+  });
+
+} else if (video.canPlayType('application/vnd.apple.mpegurl')) {
+  // Native HLS support (Safari)
+  video.src = `/v1/cams/${camId}/hls/playlist.m3u8?token=${token}`;
+  video.addEventListener('loadedmetadata', function() {
+    video.play();
+  });
+}
+```
+
+3. WebRTC Player:
+
+HTML:
+```html
+<video id="video" autoplay playsinline muted></video>
+<div id="status">Connecting...</div>
+```
+
+JavaScript:
+```javascript
+const video = document.getElementById('video');
+const status = document.getElementById('status');
+const camId = 1;
+const token = 'your_access_token';
+
+// WebSocket URL
+const wsUrl = `${location.protocol === 'https:' ? 'wss:' : 'ws:'}//${location.host}/v1/cams/${camId}/webrtc?token=${token}`;
+
+// ICE servers configuration
+const iceServers = [
+  { urls: 'stun:turn.qpda.ru:3478' },
+  {
+    urls: 'turn:turn.qpda.ru:3478',
+    // Credentials автоматически генерируются сервером
+  }
+];
+
+// Create peer connection
+const pc = new RTCPeerConnection({ iceServers });
+
+// WebSocket connection
+const ws = new WebSocket(wsUrl);
+
+ws.onopen = () => {
+  status.textContent = 'Connected to signaling server';
+};
+
+ws.onmessage = async (event) => {
+  const msg = JSON.parse(event.data);
+
+  if (msg.type === 'ready') {
+    status.textContent = 'Creating offer...';
+
+    // Create and send offer
+    const offer = await pc.createOffer();
+    await pc.setLocalDescription(offer);
+
+    ws.send(JSON.stringify({
+      type: 'offer',
+      sdp: offer.sdp
+    }));
+  }
+
+  if (msg.type === 'answer') {
+    status.textContent = 'Received answer, connecting...';
+
+    await pc.setRemoteDescription({
+      type: 'answer',
+      sdp: msg.sdp
+    });
+  }
+
+  if (msg.type === 'error') {
+    status.textContent = `Error: ${msg.message}`;
+    console.error('WebRTC error:', msg.message);
+  }
+};
+
+ws.onerror = (error) => {
+  status.textContent = 'WebSocket error';
+  console.error('WebSocket error:', error);
+};
+
+ws.onclose = () => {
+  status.textContent = 'Disconnected';
+  pc.close();
+};
+
+// Handle ICE candidates
+pc.onicecandidate = (event) => {
+  if (event.candidate) {
+    ws.send(JSON.stringify({
+      type: 'ice_candidate',
+      candidate: event.candidate.candidate,
+      sdpMid: event.candidate.sdpMid,
+      sdpMLineIndex: event.candidate.sdpMLineIndex
+    }));
+  }
+};
+
+// Handle incoming video track
+pc.ontrack = (event) => {
+  status.textContent = 'Streaming...';
+  video.srcObject = event.streams[0];
+};
+
+// Handle connection state changes
+pc.onconnectionstatechange = () => {
+  console.log('Connection state:', pc.connectionState);
+  if (pc.connectionState === 'connected') {
+    status.textContent = 'Connected - streaming';
+  } else if (pc.connectionState === 'failed') {
+    status.textContent = 'Connection failed';
+  }
+};
+
+// Cleanup on page unload
+window.addEventListener('beforeunload', () => {
+  ws.close();
+  pc.close();
+});
+```
+
+4. Универсальный video player компонент:
+
+JavaScript (React example):
+```javascript
+import React, { useEffect, useRef, useState } from 'react';
+import Hls from 'hls.js';
+
+function CameraPlayer({ camId, token, preferredFormat }) {
+  const videoRef = useRef(null);
+  const [format, setFormat] = useState(null);
+  const [error, setError] = useState(null);
+
+  useEffect(() => {
+    let cleanup;
+
+    async function initPlayer() {
+      try {
+        // Get supported formats
+        const response = await fetch('/v1/config/frontend/supported_streams');
+        const { data } = await response.json();
+
+        // Select format
+        const selectedFormat = data.streams.find(
+          s => s.format === preferredFormat && s.enabled
+        ) || data.streams.find(s => s.format === 'fmp4');
+
+        setFormat(selectedFormat);
+
+        // Initialize player based on format
+        if (selectedFormat.format === 'hls') {
+          cleanup = initHLS(camId, token, videoRef.current);
+        } else if (selectedFormat.format === 'webrtc') {
+          cleanup = initWebRTC(camId, token, videoRef.current);
+        } else {
+          cleanup = initFMP4(camId, token, videoRef.current);
+        }
+
+      } catch (err) {
+        setError(err.message);
+      }
+    }
+
+    initPlayer();
+
+    return () => {
+      if (cleanup) cleanup();
+    };
+  }, [camId, token, preferredFormat]);
+
+  return (
+    <div>
+      <video ref={videoRef} controls autoPlay playsInline muted />
+      {format && <div>Format: {format.name} (latency: {format.latency})</div>}
+      {error && <div>Error: {error}</div>}
+    </div>
+  );
+}
+
+function initHLS(camId, token, videoElement) {
+  const hls = new Hls();
+  hls.loadSource(`/v1/cams/${camId}/hls/playlist.m3u8?token=${token}`);
+  hls.attachMedia(videoElement);
+
+  return () => {
+    hls.destroy();
+  };
+}
+
+function initWebRTC(camId, token, videoElement) {
+  const ws = new WebSocket(`ws://${location.host}/v1/cams/${camId}/webrtc?token=${token}`);
+  const pc = new RTCPeerConnection({
+    iceServers: [{ urls: 'stun:turn.qpda.ru:3478' }]
+  });
+
+  // ... WebRTC setup as above ...
+
+  return () => {
+    ws.close();
+    pc.close();
+  };
+}
+
+function initFMP4(camId, token, videoElement) {
+  // MSE implementation for fMP4
+  // ... existing implementation ...
+
+  return () => {
+    // cleanup
+  };
+}
+```
+
+
+SHARE TOKENS
+================================================================================
+
+Все новые endpoints поддерживают share tokens:
+
+1. Создание share token для stream:
+   POST /v1/shares
+   {
+     "device_type": "cams",
+     "device_id": 1,
+     "type": "stream",
+     "ttl": 3600
+   }
+
+2. Использование share token:
+   - HLS: ?token=<share_token>
+   - WebRTC: ?token=<share_token> (в WebSocket URL)
+   - fMP4: ?token=<share_token> (как и раньше)
+
+
+RATE LIMITING
+================================================================================
+
+Новые лимиты:
+
+- /v1/config/frontend/supported_streams: без ограничений (публичный)
+- /v1/cams/{id}/hls/playlist.m3u8: 50 req/min, cost=1
+- /v1/cams/{id}/hls/{segment}.ts: 50 req/min, cost=1
+- /v1/cams/{id}/webrtc: 20 connections/min
+
+Существующие:
+- /v1/cams/{id}/stream: 30 req/min, cost=10 (новая) или 3 (attach)
+
+
+ERROR CODES
+================================================================================
+
+Новые коды ошибок не добавлены, используются существующие:
+- BAD_REQUEST: формат отключен или невалидные параметры
+- UNAUTHORIZED: проблемы с авторизацией
+- NOT_FOUND: камера или ресурс не найдены
+- SERVER_ERROR: ошибки ffmpeg или внутренние ошибки
+
+
+MIGRATION GUIDE
+================================================================================
+
+Для фронтенда:
+
+1. ОБЯЗАТЕЛЬНО:
+   - Ничего! Все старые endpoints работают
+   - Существующий код продолжит использовать fMP4
+
+2. ОПЦИОНАЛЬНО (для новых функций):
+   - Добавить проверку GET /v1/config/frontend/supported_streams
+   - Реализовать HLS player для iOS/Safari
+   - Реализовать WebRTC player для low-latency сценариев
+
+3. РЕКОМЕНДУЕТСЯ:
+   - Адаптивный выбор формата на основе устройства/браузера
+   - Graceful fallback при недоступности формата
+   - UI переключение между форматами (для пользователей)
+
+
+TESTING
+================================================================================
+
+Тестовые сценарии:
+
+1. Discovery:
+   curl http://localhost:3805/v1/config/frontend/supported_streams
+
+2. HLS:
+   curl -H "Authorization: Bearer <token>" \
+     http://localhost:3805/v1/cams/1/hls/playlist.m3u8
+
+   ffplay -headers "Authorization: Bearer <token>" \
+     http://localhost:3805/v1/cams/1/hls/playlist.m3u8
+
+3. WebRTC:
+   - Используйте browser console и примеры кода выше
+   - Или webrtc-tester tool
+
+4. Проверка fallback:
+   - Отключить HLS_ENABLED и проверить что он отсутствует в discovery
+   - Убедиться что fMP4 всегда доступен
+
+
+TROUBLESHOOTING
+================================================================================
+
+Проблема: "HLS стриминг отключен"
+Решение: HLS_ENABLED=False в конфиге, используйте fMP4 или включите HLS
+
+Проблема: "WebRTC не подключается"
+Решение: Проверьте STUN/TURN сервер доступен, firewall открыт для UDP 3478
+
+Проблема: "Сегмент не найден" для HLS
+Решение: Playlist обновился, запросите новый playlist и используйте актуальные сегменты
+
+Проблема: WebSocket закрывается с кодом 1008
+Решение: Проблема с авторизацией или WebRTC отключен на сервере
+
+
+ВЕРСИОНИРОВАНИЕ
+================================================================================
+
+Version: 3.3.0
+Breaking changes: НЕТ
+Backward compatible: ДА
+
+Все существующие клиенты продолжат работать без изменений.
+
+
+================================================================================
+  End of Specification
+================================================================================

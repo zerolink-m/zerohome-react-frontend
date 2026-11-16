@@ -1,0 +1,304 @@
+# API Specification - Motion Detection & Push Settings
+# Date: 26.10.2026
+
+GET /v1/cams/{cam_id}/motion/status
+- Description: Get motion detection status for camera
+- Auth: Required (owner or invited user)
+- Rate limit: 60/min
+- Response: {
+    "success": true,
+    "data": {
+      "cam_id": int,
+      "is_active": bool
+    }
+  }
+
+POST /v1/cams/{cam_id}/motion/start
+- Description: Start motion detection for camera (owner only)
+- Auth: Required (owner only)
+- Rate limit: 10/min
+- Response: {
+    "success": true,
+    "data": {
+      "cam_id": int,
+      "started": bool,
+      "is_active": bool
+    }
+  }
+
+POST /v1/cams/{cam_id}/motion/stop
+- Description: Stop motion detection for camera (owner only)
+- Auth: Required (owner only)
+- Rate limit: 10/min
+- Response: {
+    "success": true,
+    "data": {
+      "cam_id": int,
+      "stopped": bool,
+      "is_active": bool
+    }
+  }
+
+## NEW ENDPOINTS
+
+### Snapshot
+GET /v1/cams/{id}/snapshot
+- Description: Get live snapshot from camera (ONVIF or RTSP fallback)
+- Auth: Required (stream access)
+- Rate limit: 30/min
+- Response: image/jpeg
+
+### ONVIF Settings
+PATCH /v1/cams/{id}/onvif
+- Description: Update ONVIF settings for camera
+- Auth: Required (owner only)
+- Rate limit: 20/min
+- Body: {
+    "onvif_enabled": 0|1,
+    "onvif_snapshot_enabled": 0|1,
+    "onvif_ptz_enabled": 0|1
+  }
+- Response: {
+    "success": true,
+    "data": {
+      "id": int,
+      "onvif_enabled": int,
+      "onvif_snapshot_enabled": int,
+      "onvif_ptz_enabled": int
+    }
+  }
+
+### Push Settings
+GET /v1/cams/{cam_id}/push-settings
+- Description: Get push notification settings for camera
+- Auth: Required (owner or invited user)
+- Rate limit: 60/min
+- Response: {
+    "success": true,
+    "data": {
+      "id": int,
+      "user_id": int,
+      "device_type": "cams",
+      "device_id": int,
+      "enabled": 0|1,
+      "motion_detection_enabled": 0|1,
+      "motion_min_confidence": float (0.0-1.0),
+      "motion_min_object_size": float (0.0-1.0),
+      "motion_cooldown_seconds": int,
+      "motion_detect_person": 0|1,
+      "motion_detect_dog": 0|1,
+      "motion_detect_cat": 0|1,
+      "motion_detect_car": 0|1,
+      "motion_license_plate_ocr": 0|1,
+      "notify_offline": 0|1,
+      "notify_online": 0|1,
+      "notify_state_change": 0|1,
+      "created_at": int,
+      "updated_at": int
+    }
+  }
+
+PATCH /v1/cams/{cam_id}/push-settings
+- Description: Update push notification settings
+- Auth: Required (owner or invited user)
+- Rate limit: 20/min
+- Body: All fields optional (partial update)
+- Response: Same as GET
+
+GET /v1/switches/{switch_id}/push-settings
+- Description: Get push notification settings for switch
+- Auth: Required (owner or invited user)
+- Rate limit: 60/min
+- Response: Same structure as camera push settings
+
+PATCH /v1/switches/{switch_id}/push-settings
+- Description: Update push notification settings for switch
+- Auth: Required (owner or invited user)
+- Rate limit: 20/min
+- Body: All fields optional (partial update)
+- Response: Same as GET
+
+### Motion Detection Events
+GET /v1/cams/{cam_id}/motion/events
+- Description: Get motion detection events for camera
+- Auth: Required (owner or invited user)
+- Rate limit: 60/min
+- Query params:
+  - limit: int (1-200, default 50)
+  - offset: int (default 0)
+  - object_type: "person"|"dog"|"cat"|"car" (optional)
+- Response: {
+    "success": true,
+    "data": {
+      "events": [MotionEvent],
+      "total": int,
+      "limit": int,
+      "offset": int
+    }
+  }
+
+GET /v1/motion/events/{event_id}
+- Description: Get specific motion event
+- Auth: Required (owner or invited user)
+- Rate limit: 60/min
+- Response: {
+    "success": true,
+    "data": {
+      "id": int,
+      "cam_id": int,
+      "detected_at": int (unix timestamp),
+      "object_type": "person"|"dog"|"cat"|"car",
+      "confidence": float,
+      "object_size": float,
+      "license_plate": string|null,
+      "photo_filename": string,
+      "bbox_x": int|null,
+      "bbox_y": int|null,
+      "bbox_width": int|null,
+      "bbox_height": int|null,
+      "notified_user_ids": string|null (JSON array)
+    }
+  }
+
+GET /v1/motion/events/{event_id}/photo
+- Description: Download photo of motion event
+- Auth: Required (owner or invited user)
+- Rate limit: 100/min
+- Response: image/jpeg file
+
+DELETE /v1/motion/events/{event_id}
+- Description: Delete motion event (owner only)
+- Auth: Required (owner only)
+- Rate limit: 30/min
+- Response: {
+    "success": true,
+    "data": {"deleted": true}
+  }
+
+GET /v1/cams/{cam_id}/motion/status
+- Description: Get motion detection status for camera
+- Auth: Required (owner or invited user)
+- Rate limit: 60/min
+- Response: {
+    "success": true,
+    "data": {
+      "cam_id": int,
+      "is_active": bool
+    }
+  }
+
+## MODIFIED ENDPOINTS
+
+### Cameras
+GET /v1/cams/{id}
+- Added fields in response:
+  - onvif_enabled: int
+  - onvif_snapshot_enabled: int
+  - onvif_ptz_enabled: int
+
+GET /v1/cams
+- Added fields in CamOutRestricted:
+  - onvif_enabled: int
+  - onvif_snapshot_enabled: int
+  - onvif_ptz_enabled: int
+
+### Users
+- Added field in users table:
+  - motion_detection_allowed: int (0|1)
+
+## NEW DATABASE TABLES
+
+### push_settings
+- id: bigint (PK)
+- user_id: int (FK users.id)
+- device_type: enum('cams', 'switches')
+- device_id: int
+- enabled: smallint (default 1)
+- motion_detection_enabled: smallint (default 0)
+- motion_min_confidence: float (default 0.6)
+- motion_min_object_size: float (default 0.02)
+- motion_cooldown_seconds: int (default 0)
+- motion_detect_person: smallint (default 1)
+- motion_detect_dog: smallint (default 1)
+- motion_detect_cat: smallint (default 1)
+- motion_detect_car: smallint (default 1)
+- motion_license_plate_ocr: smallint (default 1)
+- notify_offline: smallint (default 1)
+- notify_online: smallint (default 1)
+- notify_state_change: smallint (default 1)
+- created_at: bigint
+- updated_at: bigint
+- Unique index: (user_id, device_type, device_id)
+
+### motion_events
+- id: bigint (PK)
+- cam_id: int (FK cams.id ON DELETE CASCADE)
+- detected_at: bigint (indexed)
+- object_type: enum('person', 'dog', 'cat', 'car')
+- confidence: float
+- object_size: float
+- license_plate: varchar(20) nullable
+- photo_filename: varchar(255)
+- bbox_x: int nullable
+- bbox_y: int nullable
+- bbox_width: int nullable
+- bbox_height: int nullable
+- notified_user_ids: text nullable
+- Index: (cam_id, detected_at)
+- Index: (object_type)
+
+## NOTIFICATIONS FORMAT
+
+### Healthcheck (Camera Online/Offline)
+✅ Камера {name} снова на связи
+
+Время: DD.MM.YYYY HH:MM:SS
+
+---
+
+⚠️ Камера {name} не отвечает
+
+Время: DD.MM.YYYY HH:MM:SS
+
+### Switch State Change
+🔌 Устройство {name} изменило состояние: включено/выключено
+
+Время: DD.MM.YYYY HH:MM:SS
+
+### Motion Detection
+🚶 Обнаружен человек на камере "{name}"
+🐕 Обнаружена собака на камере "{name}"
+🐈 Обнаружена кошка на камере "{name}"
+🚗 Обнаружена машина на камере "{name}"
+
+Время: DD.MM.YYYY HH:MM:SS
+Уверенность: XX%
+Номер машины: А123БВ 45 (если car + OCR enabled)
+
+## MOTION DETECTION SETTINGS
+
+### Default Values
+- motion_min_confidence: 0.6 (60%)
+- motion_min_object_size: 0.02 (2% of frame)
+- motion_cooldown_seconds: 0 (no cooldown)
+- All object types: enabled by default
+- License plate OCR: enabled by default
+
+### Processing
+- Frame rate: 1 FPS
+- Model: YOLOv8n (nano, optimized for CPU)
+- Detection classes: person, dog, cat, car
+- Tracking: IoU-based tracker with 2s max age
+- Minimum tracking time: 0.5s before notification
+
+### Storage
+- Photos: /opt/zerocams/motion_files/{cam_id}/{timestamp}_{type}_{confidence}.jpg
+- Retention: 7 days (auto-cleanup hourly)
+
+## MIGRATION NOTES
+
+### From cam.notify to push_settings
+- Old behavior: cam.notify=1 → owner + invited users get all notifications
+- New behavior: individual push_settings per user per device
+- Migration script created push_settings for all existing notify=1 devices
+- Backward compatibility: if no push_settings exist, falls back to old behavior
