@@ -4,7 +4,7 @@ import { useBackendHealth } from '../context/HealthContext'
 import { getHostState, subscribeHost } from '../api/endpoints'
 import packageJson from '../../package.json';
 
-const FRONTEND_VERSION = import.meta.env.VITE_APP_VERSION || packageJson.version || '1.0.0'
+const FRONTEND_VERSION = import.meta.env.VITE_APP_VERSION || packageJson.version || '1.0.0-Release'
 
 // Единообразный стиль: показываем версию без ведущего `v`.
 // Backend может вернуть "v3.2.0-Beta" или "3.2.0-Beta" — обрезаем префикс.
