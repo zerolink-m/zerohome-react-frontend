@@ -4,8 +4,8 @@
 import { tlog } from '../utils/timingsLog'
 import { webrtcLog } from '../utils/webrtcDebug'
 
-export const MAIN_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8000/v1'
-export const WS_BASE_URL = import.meta.env.VITE_WS_BASE_URL || 'ws://localhost:8000/v1'
+export const MAIN_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'https://zerohome.qpda.ru/v1'
+export const WS_BASE_URL = import.meta.env.VITE_WS_BASE_URL || 'wss://zerohome.qpda.ru/v1'
 
 // WS-хост как HTTP(S) base: ws:// → http://, wss:// → https://.
 export const WS_HTTP_BASE_URL = WS_BASE_URL.replace(/^wss?:/, (m) => (m === 'ws:' ? 'http:' : 'https:'))
