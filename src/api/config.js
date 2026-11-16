@@ -1,8 +1,8 @@
 import { request } from './client'
 import { CODES } from './codes'
+import packageJson from '../../package.json';
 
-const FRONTEND_VERSION = import.meta.env.VITE_APP_VERSION || '1.0.0'
-
+const FRONTEND_VERSION = import.meta.env.VITE_APP_VERSION || packageJson.version || '1.0.0-Release'
 // GET /config?v=vMAJOR.MINOR.PATCH-Channel
 // Бэкенд решает по версии клиента:
 //   000 — актуальная версия, data.config = { version, actual_version }
