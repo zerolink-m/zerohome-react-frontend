@@ -226,7 +226,7 @@ export async function getValidAccessToken() {
 }
 
 // bearer — явный токен для Authorization (например share-токен); тогда обновление access не выполняется.
-export async function request(path, { method = 'GET', body, auth = true, allowNonZero = false, bearer = null, _isRetry = false } = {}) {
+export async function request(path, { method = 'GET', body, auth = true, allowNonZero = false, bearer = null, includeMetadata = false, _isRetry = false } = {}) {
   const headers = {}
 
   // Добавляем x-pwa header для auth эндпоинтов
@@ -278,16 +278,17 @@ export async function request(path, { method = 'GET', body, auth = true, allowNo
     if (auth && !bearer && res.status === 401 && isSessionDead(json.code)) {
       const sent = headers['Authorization']?.slice(7) || null
       if (!_isRetry && getAccessToken() && getAccessToken() !== sent) {
-        return request(path, { method, body, auth, allowNonZero, _isRetry: true })
+        return request(path, { method, body, auth, allowNonZero, bearer, includeMetadata, _isRetry: true })
       }
       if (sent) clear(sent)
     }
-    if (allowNonZero) return { code: json.code, data: json.data ?? null }
+    if (allowNonZero) return { code: json.code, data: json.data ?? null, ...(includeMetadata ? { metadata: json.metadata ?? null } : {}) }
     const retryAfter = isRateLimited(json.code) ? Number(res.headers.get('Retry-After')) || null : null
     throw new ApiError(json.code, envelopeMessage(json), res.status, retryAfter, json.error)
   }
 
-  if (allowNonZero) return { code: json.code, data: json.data ?? null }
+  if (allowNonZero) return { code: json.code, data: json.data ?? null, ...(includeMetadata ? { metadata: json.metadata ?? null } : {}) }
+  if (includeMetadata) return { code: json.code, data: json.data ?? null, metadata: json.metadata ?? null }
   return json.data
 }
 

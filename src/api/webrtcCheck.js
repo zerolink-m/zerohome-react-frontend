@@ -1,4 +1,5 @@
 import { WS_HTTP_BASE_URL, HOST_SWITCH_ENABLED, reportConfigCheck, getHostState } from './endpoints'
+import { CODES } from './codes'
 import { tracedFetch } from '../utils/webrtcDebug'
 import packageJson from '../../package.json';
 
@@ -49,7 +50,11 @@ async function performCheck() {
       lastCheckAt = Date.now()
 
       // Сервер доступен и при ответах config об обновлении, включая обязательное.
-      const hostOk = response.status < 500 && ['000', '384', '387'].includes(body?.code)
+      const hostOk = response.status < 500 && [
+        CODES.OK,
+        CODES.FRONTEND_UPDATE_AVAILABLE,
+        CODES.FRONTEND_UPDATE_NEEDED,
+      ].includes(body?.code)
       reportConfigCheck(hostOk, hostOk ? '' : `HTTP ${response.status}, code=${body?.code ?? 'нет JSON'}`)
 
       const newValue = response.status === 200

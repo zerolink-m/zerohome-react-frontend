@@ -11,7 +11,7 @@ import Spinner from '../Spinner'
 const STEP = 0.1
 const clamp = (v) => Math.max(-1, Math.min(1, v))
 
-// onUnsupported — вызывается, когда камера не поддерживает PTZ (код 176): компонент при этом ничего
+// onUnsupported — вызывается, когда камера не поддерживает PTZ (CODES.PTZ_NOT_CONFIGURED): компонент при этом ничего
 // не рисует, а родитель может убрать свою обёртку (карточку).
 export default function PTZControl({ camId, authToken, onUnsupported }) {
   const toast = useToast()

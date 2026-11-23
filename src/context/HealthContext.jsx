@@ -46,7 +46,7 @@ export function HealthProvider({ children }) {
           serverVersion: actualVersion,
         })
       } else {
-        // код 000
+        // Успешный ответ CODES.OK.
         setState({
           online: true,
           version,

@@ -125,7 +125,7 @@ export function patchOnvifSettings(camId, body) {
 }
 
 // Push settings: PATCH принимает только настройки (серверные id/user_id/device_*/created_at/updated_at
-// из GET-ответа отклоняются как неизвестные поля, 109).
+// из GET-ответа отклоняются как неизвестные поля API).
 const PUSH_READONLY = ['id', 'user_id', 'device_type', 'device_id', 'created_at', 'updated_at']
 export function pushSettingsPatch(settings) {
   const body = { ...settings }

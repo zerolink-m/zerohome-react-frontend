@@ -1,7 +1,7 @@
 import { request, wrapBody } from './client'
 import { buildQuery, normalizeList, LIMIT_MAX } from './pagination'
 
-// POST /v1/invitations — создать приглашение. Ответ: 001, data.invitation (status = pending).
+// POST /v1/invitations — создать приглашение. data.invitation (status = pending).
 export function createInvitation({ device_type, device_id, email }) {
   return request('/invitations', { method: 'POST', body: wrapBody('invitation', { device_type, device_id, email }) })
     .then(data => data.invitation)

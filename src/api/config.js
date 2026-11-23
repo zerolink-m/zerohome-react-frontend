@@ -5,17 +5,17 @@ import packageJson from '../../package.json';
 const FRONTEND_VERSION = "v" + (import.meta.env.VITE_APP_VERSION || packageJson.version || '1.0.0-Release')
 // GET /config?v=vMAJOR.MINOR.PATCH-Channel
 // Бэкенд решает по версии клиента:
-//   000 — актуальная версия, data.config = { version, actual_version }
-//   384 — доступно необязательное обновление
-//   387 — обязательное обновление
-//   059 — v неверного формата
-// В отличие от остальных эндпоинтов, коды 384/387 должны дойти до вызывающего кода,
+//   CODES.OK — актуальная версия, data.config = { version, actual_version }
+//   CODES.FRONTEND_UPDATE_AVAILABLE — доступно необязательное обновление
+//   CODES.FRONTEND_UPDATE_NEEDED — обязательное обновление
+//   CODES.BAD_REQUEST — v неверного формата
+// В отличие от остальных эндпоинтов, коды обновления должны дойти до вызывающего кода,
 // поэтому используем allowNonZero (см. request() в client.js).
 export async function getConfig() {
   const v = encodeURIComponent(FRONTEND_VERSION)
   const { code, data } = await request(`/config?v=${v}`, { auth: false, allowNonZero: true })
   if (code === CODES.FRONTEND_UPDATE_NEEDED) return { code, version: null, actualVersion: null }
-  // Любой другой код ошибки (059, 314, 321, 201…) — это сбой проверки, а не «онлайн».
+  // Любой другой код ошибки — это сбой проверки, а не «онлайн».
   if (code !== CODES.OK && code !== CODES.FRONTEND_UPDATE_AVAILABLE) {
     throw new Error(`Config check failed: ${code}`)
   }

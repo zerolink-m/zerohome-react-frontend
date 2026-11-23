@@ -32,6 +32,9 @@ const AdminPage = lazy(timedImport('AdminPage', () => import('./pages/AdminPage'
 const AdminUsersPage = lazy(timedImport('AdminUsersPage', () => import('./pages/AdminUsersPage')))
 const AdminUserSessionsPage = lazy(timedImport('AdminUserSessionsPage', () => import('./pages/AdminUserSessionsPage')))
 const StatsPage = lazy(timedImport('StatsPage', () => import('./pages/StatsPage')))
+const AdminSystemSettingsPage = lazy(timedImport('AdminSystemSettingsPage', () => import('./pages/AdminSystemSettingsPage')))
+const AdminNodesPage = lazy(timedImport('AdminNodesPage', () => import('./pages/AdminNodesPage')))
+const AdminClusterPage = lazy(timedImport('AdminClusterPage', () => import('./pages/AdminClusterPage')))
 
 function RouteFallback() {
   return <Spinner style={{ padding: 24 }} />
@@ -77,6 +80,9 @@ export default function App() {
               <Route path="/admin/users" element={<AdminUsersPage />} />
               <Route path="/admin/users/:userId/sessions" element={<AdminUserSessionsPage />} />
               <Route path="/admin/stats" element={<StatsPage />} />
+              <Route path="/admin/settings" element={<AdminSystemSettingsPage />} />
+              <Route path="/admin/nodes" element={<AdminNodesPage />} />
+              <Route path="/admin/cluster" element={<AdminClusterPage />} />
             </Route>
           </Route>
         </Route>

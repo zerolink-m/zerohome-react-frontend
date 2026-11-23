@@ -20,7 +20,7 @@ export function getConnection(id) {
   return request(`/connections/${id}`).then(data => data.connection)
 }
 
-// POST /v1/connections — ответ: 001, data.connection.
+// POST /v1/connections — data.connection в ответе создания.
 export function createConnection(body) {
   return request('/connections', { method: 'POST', body: wrapBody('connection', body) }).then(data => data.connection)
 }
