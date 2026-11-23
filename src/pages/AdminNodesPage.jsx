@@ -3,17 +3,23 @@ import { Link } from 'react-router-dom'
 import { getNode, listNodes, patchNode } from '../api/nodes'
 import Button from '../components/Button'
 import DashCard from '../components/DashCard'
+import InputField from '../components/InputField'
 import PageLoader from '../components/PageLoader'
 import Pill from '../components/Pill'
+import Toggle from '../components/Toggle'
 import { useToast } from '../context/ToastContext'
 import { useLoadGate } from '../hooks/useLoadGate'
 import { colors } from '../styles/tokens'
 
-const MASKED_VALUE = /^(?:\*{3,}|•{3,}|<\s*(?:redacted|hidden|masked)\s*>|redacted|hidden|masked)$/i
 const SECRET_NAME = /secret|token|password|credential|private.?key/i
+const MASKED_VALUE = /^(?:\*{3,}|•{3,}|<\s*(?:redacted|hidden|masked)\s*>|redacted|hidden|masked)$/i
 
-function pretty(value) {
-  return JSON.stringify(value ?? {}, null, 2)
+function asRecord(value) {
+  return value && typeof value === 'object' && !Array.isArray(value) ? value : {}
+}
+
+function cloneRecord(value) {
+  return JSON.parse(JSON.stringify(asRecord(value)))
 }
 
 function timestamp(value) {
@@ -22,29 +28,92 @@ function timestamp(value) {
   return Number.isFinite(seconds) ? new Date(seconds * 1000).toLocaleString() : String(value)
 }
 
-function hasMaskedSecret(value) {
-  if (Array.isArray(value)) return value.some(hasMaskedSecret)
-  if (!value || typeof value !== 'object') return false
-  return Object.entries(value).some(([key, child]) => {
-    if (SECRET_NAME.test(key) && (child == null || (typeof child === 'string' && MASKED_VALUE.test(child.trim())))) return true
-    return hasMaskedSecret(child)
-  })
+function isSensitive(key, value) {
+  return SECRET_NAME.test(String(key)) || (typeof value === 'string' && MASKED_VALUE.test(value.trim()))
 }
 
-function parseObject(text, label) {
-  let parsed
-  try { parsed = JSON.parse(text) } catch { throw new Error(`${label}: проверьте JSON-синтаксис`) }
-  if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) throw new Error(`${label}: ожидается JSON-объект`)
-  return parsed
+function flagValue(value) {
+  return value === true || value === 1 || value === '1'
 }
 
-function JsonEditor({ id, label, value, onChange, disabled, helper }) {
+function setFlagValue(previous, next) {
+  return typeof previous === 'number' ? (next ? 1 : 0) : Boolean(next)
+}
+
+function sameJson(left, right) {
+  return JSON.stringify(left) === JSON.stringify(right)
+}
+
+function ValueDisplay({ label, value }) {
   return (
-    <div style={{ marginTop: 18 }}>
-      <label htmlFor={id} style={{ display: 'block', fontSize: 12, color: colors.white[4], marginBottom: 8 }}>{label}</label>
-      <textarea id={id} value={value} onChange={(event) => onChange(event.target.value)} disabled={disabled} rows={11} spellCheck="false" style={{ width: '100%', boxSizing: 'border-box', resize: 'vertical', padding: 12, background: 'var(--card-bg)', border: `1px solid ${colors.white[8]}`, borderRadius: 12, color: colors.text, opacity: disabled ? 0.58 : 1, font: '12px/1.6 var(--font-mono, monospace)' }} />
-      {helper && <p style={{ fontSize: 12, lineHeight: 1.5, color: disabled ? colors.statuses.yellow.text : colors.white[4], margin: '8px 0 0' }}>{helper}</p>}
+    <div style={{ minWidth: 0 }}>
+      <div style={{ color: colors.white[3], fontSize: 10, textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: 5 }}>{label}</div>
+      <div style={{ color: colors.text, fontSize: 13, overflowWrap: 'anywhere' }}>{value ?? '—'}</div>
     </div>
+  )
+}
+
+function SettingControl({ name, value, onChange }) {
+  if (isSensitive(name, value)) {
+    return (
+      <div style={{ padding: 12, borderRadius: 10, border: `1px solid ${colors.statuses.yellow.border}`, background: colors.statuses.yellow.bg }}>
+        <Pill variant="yellow">секрет скрыт</Pill>
+        <div style={{ color: colors.statuses.yellow.text, fontSize: 12, lineHeight: 1.5, marginTop: 8 }}>Это поле не редактируется: сервер не возвращает его исходное значение.</div>
+      </div>
+    )
+  }
+
+  if (typeof value === 'boolean') {
+    return <Toggle checked={value} onChange={onChange} label={name} />
+  }
+
+  if (typeof value === 'number') {
+    return <InputField label={name} type="number" step="any" value={value} onChange={(event) => onChange(event.target.value === '' ? '' : Number(event.target.value))} />
+  }
+
+  if (typeof value === 'string') {
+    return <InputField label={name} value={value} onChange={(event) => onChange(event.target.value)} />
+  }
+
+  return (
+    <div>
+      <div style={{ color: colors.white[4], fontSize: 12, marginBottom: 7 }}>{name} · только просмотр</div>
+      <div style={{ margin: 0, padding: 12, borderRadius: 10, background: 'var(--card-bg)', border: `1px solid ${colors.white[8]}`, color: colors.white[4], fontSize: 12 }}>
+        {value === null ? 'Пустое значение' : Array.isArray(value) ? `Массив · ${value.length} элементов` : `Объект · ${Object.keys(value).length} полей`}
+      </div>
+      <div style={{ color: colors.white[3], fontSize: 11, lineHeight: 1.5, marginTop: 7 }}>Структурированные значения отображаются без раскрытия содержимого и здесь не редактируются.</div>
+    </div>
+  )
+}
+
+function CapabilityCard({ name, policy, onChange }) {
+  const item = asRecord(policy)
+  const supported = flagValue(item.supported)
+  const enabled = flagValue(item.enabled)
+  const capacity = item.capacity ?? null
+
+  return (
+    <DashCard style={{ padding: 16, minWidth: 0 }}>
+      <h3 style={{ fontSize: 14, margin: '0 0 14px', overflowWrap: 'anywhere' }}>{name}</h3>
+      <div style={{ display: 'grid', gap: 14 }}>
+        <div>
+          <div style={{ color: colors.white[3], fontSize: 10, textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: 8 }}>Поддерживается</div>
+          <Toggle checked={supported} onChange={(next) => onChange('supported', setFlagValue(item.supported, next))} label={`${name}: поддерживается`} />
+        </div>
+        <div>
+          <div style={{ color: colors.white[3], fontSize: 10, textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: 8 }}>Включено</div>
+          <Toggle checked={enabled} onChange={(next) => onChange('enabled', setFlagValue(item.enabled, next))} label={`${name}: включено`} />
+        </div>
+        <div>
+          <div style={{ color: colors.white[3], fontSize: 10, textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: 3 }}>Ёмкость</div>
+          <InputField label="Число или без лимита" type="number" min={0} step="any" value={capacity == null ? '' : capacity} placeholder="Без лимита" onChange={(event) => {
+            const raw = event.target.value
+            onChange('capacity', raw === '' ? null : Number(raw))
+          }} />
+          <div style={{ color: colors.white[3], fontSize: 11, marginTop: -12 }}>Пустое поле означает `null` — без лимита.</div>
+        </div>
+      </div>
+    </DashCard>
   )
 }
 
@@ -53,18 +122,18 @@ export default function AdminNodesPage() {
   const [nodes, setNodes] = useState([])
   const [selectedId, setSelectedId] = useState(null)
   const [node, setNode] = useState(null)
-  const [settingsText, setSettingsText] = useState('{}')
-  const [capabilitiesText, setCapabilitiesText] = useState('{}')
-  const [savedSettingsText, setSavedSettingsText] = useState('{}')
-  const [savedCapabilitiesText, setSavedCapabilitiesText] = useState('{}')
+  const [settingsDraft, setSettingsDraft] = useState({})
+  const [savedSettings, setSavedSettings] = useState({})
+  const [capabilitiesDraft, setCapabilitiesDraft] = useState({})
+  const [savedCapabilities, setSavedCapabilities] = useState({})
   const [revision, setRevision] = useState(null)
   const [loading, setLoading] = useState(true)
   const [loadError, setLoadError] = useState(null)
   const [detailLoading, setDetailLoading] = useState(false)
   const [saving, setSaving] = useState(false)
   const [restartRequired, setRestartRequired] = useState(false)
+  const [editError, setEditError] = useState(null)
   const gate = useLoadGate(loading, loadError)
-  const settingsMasked = hasMaskedSecret(node?.settings)
 
   async function loadNodes() {
     setLoading(true)
@@ -84,16 +153,17 @@ export default function AdminNodesPage() {
   async function loadNode(nodeId) {
     if (nodeId == null) return
     setDetailLoading(true)
+    setEditError(null)
     try {
       const result = await getNode(nodeId)
       const current = result.node
+      const nextSettings = cloneRecord(current?.settings)
+      const nextCapabilities = cloneRecord(current?.capabilities)
       setNode(current)
-      const nextSettings = pretty(current?.settings)
-      const nextCapabilities = pretty(current?.capabilities)
-      setSettingsText(nextSettings)
-      setSavedSettingsText(nextSettings)
-      setCapabilitiesText(nextCapabilities)
-      setSavedCapabilitiesText(nextCapabilities)
+      setSettingsDraft(nextSettings)
+      setSavedSettings(nextSettings)
+      setCapabilitiesDraft(nextCapabilities)
+      setSavedCapabilities(nextCapabilities)
       setRevision(result.revision)
     } catch (error) {
       toast.error(error.message || 'Не удалось загрузить конфигурацию ноды')
@@ -105,22 +175,51 @@ export default function AdminNodesPage() {
   useEffect(() => { loadNodes() }, [])
   useEffect(() => { if (selectedId != null) loadNode(selectedId) }, [selectedId])
 
+  function updateSetting(key, value) {
+    setSettingsDraft((current) => ({ ...current, [key]: value }))
+    setEditError(null)
+  }
+
+  function updateCapability(name, field, value) {
+    setCapabilitiesDraft((current) => {
+      const previous = current[name]
+      const policy = previous && typeof previous === 'object' && !Array.isArray(previous) ? previous : {}
+      return { ...current, [name]: { ...policy, [field]: value } }
+    })
+    setEditError(null)
+  }
+
   async function save() {
     if (!node) return
-    const patch = {}
-    try {
-      if (!settingsMasked && settingsText !== savedSettingsText) patch.settings = parseObject(settingsText, 'Настройки')
-      if (capabilitiesText !== savedCapabilitiesText) patch.capabilities = parseObject(capabilitiesText, 'Возможности')
-      if (!Object.keys(patch).length) {
-        toast.info('Изменений для сохранения нет')
+    const settingsPatch = {}
+    for (const [key, value] of Object.entries(settingsDraft)) {
+      if (isSensitive(key, value)) continue
+      if (typeof savedSettings[key] === 'number' && value === '') {
+        setEditError(`Настройка «${key}» должна быть числом.`)
         return
       }
-    } catch (error) {
-      toast.error(error.message)
+      if (!sameJson(value, savedSettings[key])) settingsPatch[key] = value
+    }
+
+    for (const [name, rawPolicy] of Object.entries(capabilitiesDraft)) {
+      const policy = asRecord(rawPolicy)
+      const capacity = policy.capacity
+      if (capacity !== null && capacity !== undefined && (!Number.isFinite(Number(capacity)) || Number(capacity) < 0)) {
+        setEditError(`Ёмкость «${name}» должна быть неотрицательным числом или null.`)
+        return
+      }
+    }
+
+    const patch = {}
+    if (Object.keys(settingsPatch).length) patch.settings = settingsPatch
+    if (!sameJson(capabilitiesDraft, savedCapabilities)) patch.capabilities = capabilitiesDraft
+    if (!Object.keys(patch).length) {
+      toast.info('Изменений для сохранения нет')
       return
     }
 
     setSaving(true)
+    setEditError(null)
     try {
       const result = await patchNode(node.node_id, patch)
       setRevision(result.revision ?? revision)
@@ -135,7 +234,9 @@ export default function AdminNodesPage() {
     }
   }
 
-  const dirty = (!settingsMasked && settingsText !== savedSettingsText) || capabilitiesText !== savedCapabilitiesText
+  const settingsChanged = Object.entries(settingsDraft).some(([key, value]) => !isSensitive(key, value) && !sameJson(value, savedSettings[key]))
+  const capabilitiesChanged = !sameJson(capabilitiesDraft, savedCapabilities)
+  const dirty = settingsChanged || capabilitiesChanged
 
   return (
     <div>
@@ -168,27 +269,71 @@ export default function AdminNodesPage() {
             </div>
           </DashCard>
 
-          <DashCard style={{ padding: 18, minWidth: 0 }}>
-            {!selectedId ? <div style={{ color: colors.white[4], fontSize: 13 }}>Выберите ноду.</div> : detailLoading ? (
-              <div role="status" style={{ color: colors.white[4], fontSize: 13 }}>Загружаем конфигурацию…</div>
-            ) : node ? (
-              <>
-                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap' }}>
-                  <div>
-                    <h2 style={{ fontSize: 16, margin: 0, overflowWrap: 'anywhere' }}>{node.node_id}</h2>
-                    <div style={{ marginTop: 5, fontSize: 12, color: colors.white[4] }}>{node.address || 'Адрес не указан'} · {node.version || 'версия неизвестна'}</div>
+          <div style={{ display: 'grid', gap: 16, minWidth: 0 }}>
+            <DashCard style={{ padding: 18, minWidth: 0 }}>
+              {!selectedId ? <div style={{ color: colors.white[4], fontSize: 13 }}>Выберите ноду.</div> : detailLoading ? (
+                <div role="status" style={{ color: colors.white[4], fontSize: 13 }}>Загружаем конфигурацию…</div>
+              ) : node ? (
+                <>
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap' }}>
+                    <div>
+                      <h2 style={{ fontSize: 16, margin: 0, overflowWrap: 'anywhere' }}>{node.node_id}</h2>
+                      <div style={{ marginTop: 5, fontSize: 12, color: colors.white[4] }}>{node.address || 'Адрес не указан'} · {node.version || 'версия неизвестна'}</div>
+                    </div>
+                    {revision != null && <Pill>ревизия {revision}</Pill>}
                   </div>
-                  {revision != null && <Pill>ревизия {revision}</Pill>}
-                </div>
-                <JsonEditor id="node-settings" label="Локальные настройки" value={settingsText} onChange={setSettingsText} disabled={settingsMasked} helper={settingsMasked ? 'Ответ содержит скрытый секрет. Редактирование этого JSON отключено, чтобы не затереть исходное значение.' : 'Изменяйте только если знаете формат конфигурации этой ноды.'} />
-                <JsonEditor id="node-capabilities" label="Политики возможностей" value={capabilitiesText} onChange={setCapabilitiesText} helper="Объект JSON с политиками, поддерживаемыми этой нодой." />
-                <div style={{ display: 'flex', gap: 10, marginTop: 16, flexWrap: 'wrap' }}>
-                  <Button variant="accent" onClick={save} loading={saving} disabled={!dirty}>Сохранить</Button>
+                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(min(100%, 180px), 1fr))', gap: 12, marginTop: 16 }}>
+                    <ValueDisplay label="Heartbeat" value={timestamp(node.heartbeat_at)} />
+                    <ValueDisplay label="Запущена" value={timestamp(node.started_at)} />
+                  </div>
+                </>
+              ) : <div style={{ color: colors.white[4], fontSize: 13 }}>Данные ноды недоступны.</div>}
+            </DashCard>
+
+            {node && !detailLoading && (
+              <>
+                <section aria-labelledby="node-settings-title">
+                  <div style={{ margin: '0 0 12px' }}>
+                    <h2 id="node-settings-title" style={{ fontSize: 16, margin: 0 }}>Локальные настройки</h2>
+                    <p style={{ fontSize: 12, color: colors.white[4], lineHeight: 1.5, margin: '5px 0 0' }}>Изменённые скалярные ключи сохраняются отдельными значениями. Объекты доступны только для просмотра.</p>
+                  </div>
+                  {Object.keys(settingsDraft).length === 0 ? (
+                    <DashCard><div style={{ color: colors.white[4], fontSize: 13 }}>Настроек нет.</div></DashCard>
+                  ) : (
+                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(min(100%, 220px), 1fr))', gap: 12 }}>
+                      {Object.entries(settingsDraft).map(([key, value]) => (
+                        <DashCard key={key} style={{ padding: 14, minWidth: 0 }}>
+                          <SettingControl name={key} value={value} onChange={(next) => updateSetting(key, next)} />
+                        </DashCard>
+                      ))}
+                    </div>
+                  )}
+                </section>
+
+                <section aria-labelledby="node-capabilities-title">
+                  <div style={{ margin: '0 0 12px' }}>
+                    <h2 id="node-capabilities-title" style={{ fontSize: 16, margin: 0 }}>Политики возможностей</h2>
+                    <p style={{ fontSize: 12, color: colors.white[4], lineHeight: 1.5, margin: '5px 0 0' }}>Для каждой возможности можно изменить поддержку, активность и лимит ёмкости.</p>
+                  </div>
+                  {Object.keys(capabilitiesDraft).length === 0 ? (
+                    <DashCard><div style={{ color: colors.white[4], fontSize: 13 }}>Политики возможностей не заданы.</div></DashCard>
+                  ) : (
+                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(min(100%, 240px), 1fr))', gap: 12 }}>
+                      {Object.entries(capabilitiesDraft).map(([name, policy]) => (
+                        <CapabilityCard key={name} name={name} policy={policy} onChange={(field, value) => updateCapability(name, field, value)} />
+                      ))}
+                    </div>
+                  )}
+                </section>
+
+                {editError && <div role="alert" style={{ padding: 12, borderRadius: 10, border: `1px solid ${colors.statuses.red.border}`, background: colors.statuses.red.bg, color: colors.statuses.red.text, fontSize: 12 }}>{editError}</div>}
+                <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
+                  <Button variant="accent" onClick={save} loading={saving} disabled={!dirty}>Сохранить изменения</Button>
                   <Button onClick={() => loadNode(node.node_id)} disabled={saving}>Сбросить</Button>
                 </div>
               </>
-            ) : <div style={{ color: colors.white[4], fontSize: 13 }}>Данные ноды недоступны.</div>}
-          </DashCard>
+            )}
+          </div>
         </div>
       )}
     </div>

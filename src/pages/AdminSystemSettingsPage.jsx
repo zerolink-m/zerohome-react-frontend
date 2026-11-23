@@ -1,10 +1,12 @@
 import { useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
-import { getSystemSetting, listSystemSettings, patchSystemSetting } from '../api/systemSettings'
+import { listSystemSettings, patchSystemSetting } from '../api/systemSettings'
 import Button from '../components/Button'
 import DashCard from '../components/DashCard'
+import InputField from '../components/InputField'
 import PageLoader from '../components/PageLoader'
 import Pill from '../components/Pill'
+import Toggle from '../components/Toggle'
 import { useToast } from '../context/ToastContext'
 import { useLoadGate } from '../hooks/useLoadGate'
 import { colors } from '../styles/tokens'
@@ -17,15 +19,100 @@ function isSecret(setting) {
     || (typeof setting?.value === 'string' && MASKED_VALUE.test(setting.value.trim()))
 }
 
-function valuePreview(setting) {
-  if (isSecret(setting)) return 'Скрыто'
-  if (setting?.value == null) return 'null'
-  const text = typeof setting.value === 'string' ? setting.value : JSON.stringify(setting.value)
-  return text.length > 120 ? `${text.slice(0, 117)}…` : text
+function valueLabel(value) {
+  if (value === null) return 'null'
+  if (typeof value === 'string') return value || 'Пустая строка'
+  if (typeof value === 'object') return JSON.stringify(value)
+  return String(value)
 }
 
-function printable(value) {
-  return JSON.stringify(value ?? null, null, 2)
+function isJsonValue(value) {
+  return value === null || typeof value === 'object'
+}
+
+function SettingCard({ setting, saving, onSave }) {
+  const secret = isSecret(setting)
+  const [draft, setDraft] = useState(secret ? '' : setting.value)
+  const [jsonText, setJsonText] = useState(() => JSON.stringify(setting.value, null, 2))
+  const [error, setError] = useState(null)
+  const jsonValue = isJsonValue(setting.value)
+
+  useEffect(() => {
+    setDraft(isSecret(setting) ? '' : setting.value)
+    setJsonText(JSON.stringify(setting.value, null, 2))
+    setError(null)
+  }, [setting.value])
+
+  function currentDraft() {
+    if (secret) return draft
+    if (typeof setting.value === 'boolean') return Boolean(draft)
+    if (typeof setting.value === 'number') {
+      if (draft === '') throw new Error('Введите число')
+      return Number(draft)
+    }
+    if (typeof setting.value === 'string') return String(draft ?? '')
+    try { return JSON.parse(jsonText) } catch { throw new Error('Проверьте JSON-синтаксис') }
+  }
+
+  async function save() {
+    setError(null)
+    let value
+    try {
+      value = currentDraft()
+      if (typeof setting.value === 'number' && !Number.isFinite(value)) throw new Error('Введите корректное число')
+      if (secret && !String(value || '').trim()) return
+    } catch (saveError) {
+      setError(saveError.message)
+      return
+    }
+    await onSave(setting.key, value)
+  }
+
+  const dirty = secret
+    ? typeof draft === 'string' && draft.trim().length > 0
+    : jsonValue
+      ? jsonText !== JSON.stringify(setting.value, null, 2)
+      : !Object.is(draft, setting.value)
+
+  return (
+    <DashCard style={{ padding: 18, minWidth: 0 }}>
+      <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 12, marginBottom: 14 }}>
+        <div style={{ minWidth: 0 }}>
+          <h2 style={{ fontSize: 14, margin: 0, overflowWrap: 'anywhere' }}>{setting.key}</h2>
+          <div style={{ fontSize: 11, color: colors.white[3], marginTop: 5 }}>Тип: {secret ? 'секрет' : setting.value === null ? 'null' : typeof setting.value}</div>
+        </div>
+        {secret && <Pill variant="yellow">скрыто</Pill>}
+      </div>
+
+      <div style={{ padding: '10px 12px', marginBottom: 14, borderRadius: 10, border: `1px solid ${colors.white[8]}`, background: 'var(--card-bg)', minWidth: 0 }}>
+        <div style={{ fontSize: 10, color: colors.white[3], textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: 5 }}>Текущее значение</div>
+        <div style={{ fontSize: 12, color: colors.white[6], overflowWrap: 'anywhere', whiteSpace: jsonValue ? 'pre-wrap' : undefined }}>{secret ? 'Секрет не раскрывается сервером' : valueLabel(setting.value)}</div>
+      </div>
+
+      {secret ? (
+        <div>
+          <InputField label="Новое значение" type="password" autoComplete="new-password" value={typeof draft === 'string' ? draft : ''} onChange={(event) => setDraft(event.target.value)} placeholder="Оставьте пустым, чтобы не менять" />
+        </div>
+      ) : typeof setting.value === 'boolean' ? (
+        <div style={{ marginBottom: 18 }}>
+          <span style={{ display: 'block', fontSize: 11, fontFamily: "'JetBrains Mono', monospace", textTransform: 'uppercase', letterSpacing: '0.12em', color: colors.white[3], marginBottom: 8 }}>Новое значение</span>
+          <Toggle checked={Boolean(draft)} onChange={setDraft} label={setting.key} disabled={saving} />
+        </div>
+      ) : typeof setting.value === 'number' ? (
+        <InputField label="Новое значение" type="number" step="any" value={draft ?? ''} onChange={(event) => setDraft(event.target.value === '' ? '' : Number(event.target.value))} />
+      ) : typeof setting.value === 'string' ? (
+        <InputField label="Новое значение" value={draft ?? ''} onChange={(event) => setDraft(event.target.value)} />
+      ) : (
+        <div style={{ marginBottom: 18 }}>
+          <label htmlFor={`setting-${setting.key}`} style={{ display: 'block', fontSize: 11, fontFamily: "'JetBrains Mono', monospace", textTransform: 'uppercase', letterSpacing: '0.12em', color: colors.white[3], marginBottom: 8 }}>Новое значение (JSON)</label>
+          <textarea id={`setting-${setting.key}`} value={jsonText} onChange={(event) => setJsonText(event.target.value)} rows={5} spellCheck="false" style={{ width: '100%', boxSizing: 'border-box', resize: 'vertical', padding: 12, background: 'var(--card-bg)', border: `1px solid ${colors.white[8]}`, borderRadius: 12, color: colors.text, font: '12px/1.6 var(--font-mono, monospace)' }} />
+        </div>
+      )}
+
+      {error && <div role="alert" style={{ color: colors.statuses.red.text, fontSize: 12, margin: '-6px 0 12px' }}>{error}</div>}
+      <Button variant="accent" onClick={save} loading={saving} disabled={!dirty || (secret && !String(draft || '').trim())}>Сохранить настройку</Button>
+    </DashCard>
+  )
 }
 
 export default function AdminSystemSettingsPage() {
@@ -34,11 +121,7 @@ export default function AdminSystemSettingsPage() {
   const [revision, setRevision] = useState(null)
   const [loading, setLoading] = useState(true)
   const [loadError, setLoadError] = useState(null)
-  const [active, setActive] = useState(null)
-  const [detailLoading, setDetailLoading] = useState(false)
-  const [valueText, setValueText] = useState('')
-  const [secretValue, setSecretValue] = useState('')
-  const [saving, setSaving] = useState(false)
+  const [savingKeys, setSavingKeys] = useState({})
   const [restartRequired, setRestartRequired] = useState(false)
   const gate = useLoadGate(loading, loadError)
 
@@ -59,56 +142,18 @@ export default function AdminSystemSettingsPage() {
 
   useEffect(() => { load() }, [])
 
-  async function selectSetting(setting) {
-    setActive({ ...setting, value: setting.value })
-    setValueText(printable(setting.value))
-    setSecretValue('')
-    setDetailLoading(true)
+  async function saveSetting(key, value) {
+    setSavingKeys((current) => ({ ...current, [key]: true }))
     try {
-      const result = await getSystemSetting(setting.key)
-      const next = result.setting || setting
-      setActive(next)
+      const result = await patchSystemSetting(key, value)
       setRevision(result.revision ?? revision)
-      if (!isSecret(next)) setValueText(printable(next.value))
+      setRestartRequired((current) => current || result.restartRequired)
+      setItems((current) => current.map((item) => item.key === key ? (result.setting || { ...item, value }) : item))
+      toast.success(`Настройка «${key}» сохранена`)
     } catch (error) {
-      toast.error(error.message || 'Не удалось загрузить настройку')
+      toast.error(error.message || `Не удалось сохранить «${key}»`)
     } finally {
-      setDetailLoading(false)
-    }
-  }
-
-  async function save() {
-    if (!active) return
-    const secret = isSecret(active)
-    let nextValue
-    if (secret) {
-      if (!secretValue) {
-        toast.info('Введите новое значение секрета или отмените изменение')
-        return
-      }
-      nextValue = secretValue
-    } else {
-      try {
-        nextValue = JSON.parse(valueText)
-      } catch {
-        toast.error('Проверьте JSON: текстовые значения должны быть в кавычках')
-        return
-      }
-    }
-
-    setSaving(true)
-    try {
-      const result = await patchSystemSetting(active.key, nextValue)
-      setRevision(result.revision ?? revision)
-      setRestartRequired(result.restartRequired)
-      toast.success('Настройка сохранена')
-      setActive(result.setting || { ...active, value: secret ? 'Скрыто' : nextValue })
-      setSecretValue('')
-      await load()
-    } catch (error) {
-      toast.error(error.message || 'Не удалось сохранить настройку')
-    } finally {
-      setSaving(false)
+      setSavingKeys((current) => ({ ...current, [key]: false }))
     }
   }
 
@@ -131,60 +176,14 @@ export default function AdminSystemSettingsPage() {
       {gate.busy ? <PageLoader gate={gate} onRetry={load} /> : items.length === 0 ? (
         <DashCard><div style={{ color: colors.white[4], fontSize: 13 }}>Разрешённые настройки системы не найдены.</div></DashCard>
       ) : (
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(min(100%, 320px), 1fr))', gap: 16, alignItems: 'start' }}>
-          <DashCard style={{ padding: 18 }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, alignItems: 'center', marginBottom: 12 }}>
-              <h2 style={{ fontSize: 15, margin: 0 }}>Параметры</h2>
-              {revision != null && <Pill>ревизия {revision}</Pill>}
-            </div>
-            <div style={{ display: 'grid', gap: 8 }}>
-              {items.map((setting) => (
-                <button
-                  key={setting.key}
-                  type="button"
-                  onClick={() => selectSetting(setting)}
-                  aria-current={active?.key === setting.key ? 'true' : undefined}
-                  style={{ textAlign: 'left', cursor: 'pointer', padding: 12, color: colors.text, background: active?.key === setting.key ? 'var(--accent-bg)' : 'var(--card-bg)', border: `1px solid ${active?.key === setting.key ? 'var(--accent-border)' : colors.white[8]}`, borderRadius: 12, minWidth: 0 }}
-                >
-                  <span style={{ display: 'block', font: '12px var(--font-mono, monospace)', overflowWrap: 'anywhere' }}>{setting.key}</span>
-                  <span style={{ display: 'block', marginTop: 6, fontSize: 12, color: colors.white[4], overflowWrap: 'anywhere' }}>{valuePreview(setting)}</span>
-                </button>
-              ))}
-            </div>
-          </DashCard>
-
-          <DashCard style={{ padding: 18 }}>
-            {!active ? (
-              <div style={{ color: colors.white[4], fontSize: 13 }}>Выберите параметр, чтобы просмотреть или изменить его.</div>
-            ) : detailLoading ? (
-              <div role="status" style={{ color: colors.white[4], fontSize: 13 }}>Загружаем настройку…</div>
-            ) : (
-              <>
-                <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, alignItems: 'center', flexWrap: 'wrap' }}>
-                  <h2 style={{ fontSize: 15, margin: 0, overflowWrap: 'anywhere' }}>{active.key}</h2>
-                  {isSecret(active) && <Pill variant="yellow">секрет</Pill>}
-                </div>
-                {isSecret(active) ? (
-                  <div style={{ marginTop: 18 }}>
-                    <label htmlFor="system-secret-value" style={{ display: 'block', fontSize: 12, color: colors.white[4], marginBottom: 8 }}>Новое значение секрета</label>
-                    <input id="system-secret-value" type="password" autoComplete="new-password" value={secretValue} onChange={(event) => setSecretValue(event.target.value)} placeholder="Текущее значение скрыто" style={{ width: '100%', minHeight: 44, padding: '10px 12px', background: 'var(--card-bg)', border: `1px solid ${colors.white[8]}`, borderRadius: 12, color: colors.text }} />
-                    <p style={{ fontSize: 12, lineHeight: 1.5, color: colors.white[4], margin: '8px 0 0' }}>Существующее значение не раскрывается. Пустое поле ничего не меняет.</p>
-                  </div>
-                ) : (
-                  <div style={{ marginTop: 18 }}>
-                    <label htmlFor="system-setting-value" style={{ display: 'block', fontSize: 12, color: colors.white[4], marginBottom: 8 }}>Значение (JSON)</label>
-                    <textarea id="system-setting-value" value={valueText} onChange={(event) => setValueText(event.target.value)} rows={10} spellCheck="false" style={{ width: '100%', resize: 'vertical', boxSizing: 'border-box', padding: 12, background: 'var(--card-bg)', border: `1px solid ${colors.white[8]}`, borderRadius: 12, color: colors.text, font: '12px/1.6 var(--font-mono, monospace)' }} />
-                    <p style={{ fontSize: 12, lineHeight: 1.5, color: colors.white[4], margin: '8px 0 0' }}>Строки вводятся в кавычках; числа, `true`, `false` и `null` — без кавычек.</p>
-                  </div>
-                )}
-                <div style={{ display: 'flex', gap: 10, marginTop: 16, flexWrap: 'wrap' }}>
-                  <Button variant="accent" onClick={save} loading={saving}>Сохранить</Button>
-                  <Button onClick={() => { setActive(null); setSecretValue('') }} disabled={saving}>Закрыть</Button>
-                </div>
-              </>
-            )}
-          </DashCard>
-        </div>
+        <>
+          <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: 12 }}>
+            {revision != null && <Pill>ревизия {revision}</Pill>}
+          </div>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(min(100%, 320px), 1fr))', gap: 16, alignItems: 'start' }}>
+            {items.map((setting) => <SettingCard key={setting.key} setting={setting} saving={Boolean(savingKeys[setting.key])} onSave={saveSetting} />)}
+          </div>
+        </>
       )}
     </div>
   )
