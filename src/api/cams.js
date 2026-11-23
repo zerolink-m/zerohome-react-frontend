@@ -65,13 +65,11 @@ export function patchRecordingSettings(id, body) {
   return request(`/cams/${id}/recording`, { method: 'PATCH', body: wrapBody('recording_config', body) }).then(recordingConfig)
 }
 
-// Собственная пагинация записей: offset/limit (default 10, max 100) + from/to (unix).
-export function listRecordings(id, { offset, limit, from, to } = {}) {
-  const params = new URLSearchParams()
-  if (offset) params.set('offset', offset)
-  if (limit) params.set('limit', limit)
-  if (from) params.set('from', from)
-  if (to) params.set('to', to)
+// List-query записей (default 10, max 100) + временной диапазон from/to (unix).
+export function listRecordings(id, { offset, limit, from, to, ...listQuery } = {}) {
+  const params = new URLSearchParams(buildQuery({ offset, limit, ...listQuery }).slice(1))
+  if (from != null) params.set('from', from)
+  if (to != null) params.set('to', to)
   const qs = params.toString()
   return request(`/cams/${id}/recordings${qs ? `?${qs}` : ''}`).then(data => normalizeList(data, 'recordings', 10))
 }

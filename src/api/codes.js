@@ -1,53 +1,83 @@
-// Строковые коды ответов cursedapi v1.1 (см. API.md, раздел 1.3)
+// Коды cursedapi v1.2 и ZeroHome из API.md.
 
 export const CODES = {
-  // Успех
+  // Успешные ответы, используемые клиентом.
   OK: '000',
-  CREATED: '001',
-  UPDATED: '003',
-  NOT_MODIFIED: '005',
-  DELETED: '007',
-  EMPTY: '012',
-  FRONTEND_UPDATE_AVAILABLE: '020', // HTTP 200, данные отдаются
+  UPDATED: '002',
+  PARTIALLY_UPDATED: '004',
+  NO_CHANGE: '007',
+  DELETED: '009',
+  PARTIALLY_DELETED: '012',
+  AUTHORIZED: '014',
+  EMPTY: '019',
+  LOGGED_OUT: '034',
+  TOKEN_REFRESHED: '036',
+  CREATED: '039',
+  PARTIALLY_CREATED: '041',
 
-  // Ошибки клиента
-  BAD_REQUEST: '040',
-  TOKEN_ERROR: '042',
-  TOKEN_EXPIRED: '043',
-  TOKEN_BAD_KEY: '044',
-  TOKEN_BAD_ALG: '045',
-  TOKEN_MISSING: '046',
-  TOKEN_MALFORMED: '149',
-  FORBIDDEN_ROLE: '050',
-  FORBIDDEN_RESOURCE: '051',
-  TUYA_LOCAL_NOT_ALLOWED: '061',
-  RECORDING_NOT_ALLOWED: '062',
-  FRONTEND_UPDATE_NEEDED: '063', // HTTP 403, без data — обязательное обновление
-  NOT_FOUND: '082',
-  VALIDATION: '109',
-  PTZ_LOCKED: '110',
-  RATE_LIMITED: '114', // глобальный; см. isRateLimited()
-  RATE_LIMITED_LOGIN: '172',
-  RATE_LIMITED_ENDPOINT: '173',
-  EMAIL_TAKEN: '139',
-  BAD_CREDENTIALS: '138',
-  PTZ_NOT_CONFIGURED: '176',
-  RECORDING_NOT_CONFIGURED: '177',
-  INVITATION_INVALID: '178',
-  SHARE_INVALID: '180',
-  CONNECTION_INVALID: '190',
+  // Ошибки и ограничения.
+  BAD_REQUEST: '059',
+  INVALID_JSON: '063',
+  INVALID_QUERY: '066',
+  REQUIRED_FIELD: '068',
+  TYPE_MISMATCH: '070',
+  BAD_CREDENTIALS: '113',
+  EMAIL_TAKEN: '115',
+  RATE_LIMITED: '314',
+  RATE_LIMITED_LOGIN: '319',
+  RATE_LIMITED_ENDPOINT: '321',
+  TOKEN_ERROR: '167',
+  TOKEN_EXPIRED: '170',
+  TOKEN_MISSING: '177',
+  FORBIDDEN_ROLE: '186',
+  FORBIDDEN_RESOURCE: '189',
+  NOT_FOUND: '215',
+  ROUTE_NOT_FOUND: '217',
+  METHOD_NOT_ALLOWED: '226',
+  VALIDATION: '269',
+  EMPTY_LIST_POSITION: '297',
+  SEARCH_LENGTH_MISMATCH: '300',
+  FUNCTION_NOT_SUPPORTED: '153',
+  LIMIT_TOO_HIGH: '158',
 
-  // Ошибки сервера
+  // ZeroHome application codes.
+  TUYA_LOCAL_NOT_ALLOWED: '385',
+  RECORDING_NOT_ALLOWED: '386',
+  FRONTEND_UPDATE_AVAILABLE: '384',
+  FRONTEND_UPDATE_NEEDED: '387',
+  PTZ_NOT_CONFIGURED: '388',
+  RECORDING_NOT_CONFIGURED: '389',
+  INVITATION_INVALID: '390',
+  SHARE_INVALID: '392',
+  CONNECTION_INVALID: '393',
+  PTZ_LOCKED: '302',
+
+  // Локальный код клиента для сетевых/неизвестных ошибок.
   SERVER_ERROR: '201',
 }
 
-// Коды, означающие проблему с токеном (access/session недействителен).
-const AUTH_ERROR_CODES = new Set(['042', '043', '044', '045', '046', '149'])
-// Для session-токена «окончательно мёртвые» коды (истёк/не тот ключ/не JWT/удалена сессия).
-const SESSION_DEAD_CODES = new Set(['042', '043', '044', '045', '149'])
+const SUCCESS_CODES = new Set([
+  CODES.OK,
+  CODES.UPDATED,
+  CODES.PARTIALLY_UPDATED,
+  CODES.NO_CHANGE,
+  CODES.DELETED,
+  CODES.PARTIALLY_DELETED,
+  CODES.AUTHORIZED,
+  CODES.EMPTY,
+  CODES.LOGGED_OUT,
+  CODES.TOKEN_REFRESHED,
+  CODES.CREATED,
+  CODES.PARTIALLY_CREATED,
+])
+
+// Ошибки токенов перечислены в API.md как диапазон 167–177.
+const AUTH_ERROR_CODES = new Set(Array.from({ length: 11 }, (_, i) => String(167 + i).padStart(3, '0')))
+// Только эти коды означают, что сохранённая bearer-сессия недействительна.
+const SESSION_DEAD_CODES = new Set([CODES.TOKEN_ERROR, CODES.TOKEN_EXPIRED])
+const RATE_LIMIT_CODES = new Set([CODES.RATE_LIMITED, CODES.RATE_LIMITED_LOGIN, CODES.RATE_LIMITED_ENDPOINT])
 
 export const isAuthError = (code) => AUTH_ERROR_CODES.has(code)
 export const isSessionDead = (code) => SESSION_DEAD_CODES.has(code)
-export const isRateLimited = (code) => code === '114' || code === '172' || code === '173'
-// Коды успеха — 000..039 (ошибки начинаются с 040)
-export const isSuccess = (code) => Number(code) < 40
+export const isRateLimited = (code) => RATE_LIMIT_CODES.has(code)
+export const isSuccess = (code) => SUCCESS_CODES.has(String(code))

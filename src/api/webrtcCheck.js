@@ -48,8 +48,8 @@ async function performCheck() {
       }
       lastCheckAt = Date.now()
 
-      // Здоровье хоста для выбора base URL: 2xx и валидный конверт с кодом 000 (или 020 — обновление доступно).
-      const hostOk = response.ok && (body?.code === '000' || body?.code === '020')
+      // Сервер доступен и при ответах config об обновлении, включая обязательное.
+      const hostOk = response.status < 500 && ['000', '384', '387'].includes(body?.code)
       reportConfigCheck(hostOk, hostOk ? '' : `HTTP ${response.status}, code=${body?.code ?? 'нет JSON'}`)
 
       const newValue = response.status === 200

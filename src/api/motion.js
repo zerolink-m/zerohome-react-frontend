@@ -3,9 +3,11 @@ import { buildQuery, normalizeList } from './pagination'
 
 // GET /v1/cams/{id}/motion/events — общий list-query (limit по умолчанию 50, максимум 200).
 // Фильтр по типу объекта — через search/search_column (точное совпадение).
-export function listMotionEvents(camId, { limit = 50, offset = 0, object_type } = {}) {
-  const filter = { limit, offset }
-  if (object_type) {
+export function listMotionEvents(camId, options = {}) {
+  const { object_type, ...filter } = options
+  if (filter.limit == null) filter.limit = 50
+  if (filter.offset == null) filter.offset = 0
+  if (object_type != null && filter.search == null) {
     filter.search = object_type
     filter.search_column = 'object_type'
     filter.search_method = 'equals'

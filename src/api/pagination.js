@@ -2,7 +2,7 @@
 
 // Серверный default limit — 25 (у recordings 10, у motion_events 50); фронт всегда передаёт limit явно.
 export const DEFAULT_OFFSET = 0
-export const DEFAULT_LIMIT = 50
+export const DEFAULT_LIMIT = 25
 export const LIMIT_MIN = 1
 export const LIMIT_MAX = 255
 
@@ -93,13 +93,17 @@ export function buildQuery(filter) {
   const params = new URLSearchParams()
   if (filter.offset != null && filter.offset > 0) params.set('offset', filter.offset)
   if (filter.limit != null) params.set('limit', filter.limit)
-  if (filter.sort_by) params.set('sort_by', filter.sort_by)
-  if (filter.order) params.set('order', filter.order)
-  // search и search_column допустимы только вместе (иначе 118)
-  if (filter.search && filter.search_column) {
-    params.set('search', quoteListValue(filter.search))
-    params.set('search_column', filter.search_column)
-    if (filter.search_method) params.set('search_method', filter.search_method)
+  const serializeList = (value) => Array.isArray(value)
+    ? value.map(quoteListValue).join(',')
+    : value != null ? quoteListValue(value) : ''
+  if (filter.sort_by) params.set('sort_by', serializeList(filter.sort_by))
+  if (filter.order) params.set('order', serializeList(filter.order))
+  // Массивы задают позиционные условия поиска; строка остаётся одним значением,
+  // включая запятые, которые экранируются кавычками.
+  if (filter.search != null && filter.search !== '' && filter.search_column) {
+    params.set('search', serializeList(filter.search))
+    params.set('search_column', serializeList(filter.search_column))
+    if (filter.search_method) params.set('search_method', serializeList(filter.search_method))
   }
   const qs = params.toString()
   return qs ? `?${qs}` : ''
