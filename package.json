@@ -1,7 +1,7 @@
 {
   "name": "zerocams",
   "private": true,
-  "version": "4.13.16-Release",
+  "version": "4.13.17-Release",
   "type": "module",
   "scripts": {
     "dev": "vite",
