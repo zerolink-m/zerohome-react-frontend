@@ -30,7 +30,7 @@ next_release_version() {
 
 check_unpublished() {
   local version="$1"
-  local remote_tags release_check release_status
+  local remote_tags release_check
 
   remote_tags="$(git ls-remote --tags origin "refs/tags/$version" "refs/tags/$version^{}")" \
     || fail "could not check whether the release tag exists on origin: $version"
@@ -39,11 +39,7 @@ check_unpublished() {
     fail "release tag already exists locally: $version; refusing to create another release"
   fi
 
-  set +e
-  release_check="$(gh release view "$version" --json tagName 2>&1)"
-  release_status=$?
-  set -e
-  if [[ "$release_status" -eq 0 ]]; then
+  if release_check="$(gh release view "$version" --json tagName 2>&1)"; then
     fail "GitHub Release already exists: $version; refusing to bump again"
   fi
   if ! grep -qiE 'release .*not found|not found \(HTTP 404\)|HTTP 404' <<<"$release_check"; then
