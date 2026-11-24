@@ -25,7 +25,12 @@ next_release_version() {
   local major="${BASH_REMATCH[1]}"
   local minor="${BASH_REMATCH[2]}"
   local patch="${BASH_REMATCH[3]}"
-  printf '%s.%s.%s-Release' "$major" "$minor" "$((10#$patch + 1))"
+  # Roll to the next minor after patch 17; otherwise continue patch releases.
+  if (( 10#$patch >= 17 )); then
+    printf '%s.%s.0-Release' "$major" "$((10#$minor + 1))"
+  else
+    printf '%s.%s.%s-Release' "$major" "$minor" "$((10#$patch + 1))"
+  fi
 }
 
 check_unpublished() {

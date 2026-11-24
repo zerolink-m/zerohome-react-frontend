@@ -1,9 +1,10 @@
 import { WS_HTTP_BASE_URL, HOST_SWITCH_ENABLED, reportConfigCheck, getHostState } from './endpoints'
 import { CODES } from './codes'
 import { tracedFetch } from '../utils/webrtcDebug'
+import { normalizeFrontendVersion } from '../utils/frontendVersion'
 import packageJson from '../../package.json';
 
-const FRONTEND_VERSION = "v" + (import.meta.env.VITE_APP_VERSION || packageJson.version || '1.0.0-Release')
+const FRONTEND_VERSION = normalizeFrontendVersion(import.meta.env.VITE_APP_VERSION || packageJson.version)
 const CHECK_INTERVAL = 5000 // Проверка каждые 5 секунд (пока есть подписчики — плееры)
 const CHECK_TIMEOUT = 8000 // таймаут одной проверки /config
 const MONITOR_HEALTHY_MS = 30_000 // фоновый мониторинг хоста, пока WS-хост здоров
