@@ -2,16 +2,15 @@ import { useState } from 'react'
 import MaskIcon from '../MaskIcon'
 
 // Overlay с кнопкой управления звуком для видео плееров
-export default function VideoControls({ videoRef, showControls = true }) {
+export default function VideoControls({ videoRef, showControls = true, onMuteChange }) {
   const [muted, setMuted] = useState(true)
   const [hover, setHover] = useState(false)
 
   function toggleMute() {
-    if (videoRef.current) {
-      const newMuted = !muted
-      videoRef.current.muted = newMuted
-      setMuted(newMuted)
-    }
+    const newMuted = !muted
+    if (videoRef.current) videoRef.current.muted = newMuted
+    onMuteChange?.(newMuted)
+    setMuted(newMuted)
   }
 
   if (!showControls) return null
@@ -28,6 +27,9 @@ export default function VideoControls({ videoRef, showControls = true }) {
       onMouseLeave={() => setHover(false)}
     >
       <button
+        type="button"
+        aria-label="Звук"
+        aria-pressed={!muted}
         onClick={toggleMute}
         style={{
           background: 'rgba(0,0,0,0.7)',

@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useId, useState } from 'react'
 import T from '../styles/tokens'
 
 export default function InputField({
@@ -14,7 +14,13 @@ export default function InputField({
   max,
   step,
   disabled,
+  id,
+  'aria-describedby': describedBy,
+  ...rest
 }) {
+  const generatedId = useId()
+  const inputId = id ?? generatedId
+  const errorId = `${inputId}-error`
   const [focused, setFocused] = useState(false)
 
   const inputStyle = {
@@ -26,8 +32,12 @@ export default function InputField({
 
   return (
     <div style={T.fieldWrap}>
-      {label && <label style={T.label}>{label}</label>}
+      {label && <label htmlFor={inputId} style={T.label}>{label}</label>}
       <input
+        {...rest}
+        id={inputId}
+        aria-invalid={error ? true : rest['aria-invalid']}
+        aria-describedby={[describedBy, error ? errorId : null].filter(Boolean).join(' ') || undefined}
         style={inputStyle}
         type={type}
         name={name}
@@ -42,7 +52,7 @@ export default function InputField({
         onFocus={() => setFocused(true)}
         onBlur={() => setFocused(false)}
       />
-      {error && <div style={T.errorText}>{error}</div>}
+      {error && <div id={errorId} role="alert" style={T.errorText}>{error}</div>}
     </div>
   )
 }

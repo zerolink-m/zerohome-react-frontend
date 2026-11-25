@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { useNavigate, useSearchParams } from 'react-router-dom'
+import { useNavigate, useSearchParams } from 'react-router'
 import { createSwitch } from '../api/switches'
 import { ApiError } from '../api/client'
 import { CODES } from '../api/codes'

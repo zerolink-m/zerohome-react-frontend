@@ -1,12 +1,13 @@
 import { useEffect, useState } from 'react'
-import { useNavigate, useParams, useSearchParams } from 'react-router-dom'
+import { useNavigate, useParams, useSearchParams } from 'react-router'
 import { getCam, listRecordings, recordingSnapshotUrl } from '../api/cams'
 import { ApiError } from '../api/client'
 import { CODES } from '../api/codes'
 import { useToast } from '../context/ToastContext'
+import { useAuth } from '../context/AuthContext'
 import { DEFAULT_LIMIT } from '../api/pagination'
-import DashCard from '../components/DashCard'
 import Button from '../components/Button'
+import DashCard from '../components/DashCard'
 import InputField from '../components/InputField'
 import Pagination from '../components/Pagination'
 import CamRecordingPlayerPage from './CamRecordingPlayerPage'
@@ -16,17 +17,23 @@ import PhotoFrame from '../components/PhotoFrame'
 import { useLoadGate } from '../hooks/useLoadGate'
 import PageLoader from '../components/PageLoader'
 
+const MAX_RECORDINGS_LIMIT = 100
+
 export default function CamRecordingsPage() {
   const { id } = useParams()
   const toast = useToast()
   const navigate = useNavigate()
+  const { role, uid } = useAuth()
   const [searchParams, setSearchParams] = useSearchParams()
 
-  const offset = Number(searchParams.get('offset') || 0)
-  const limit = Number(searchParams.get('limit') || DEFAULT_LIMIT)
+  const rawOffset = Number(searchParams.get('offset'))
+  const rawLimit = Number(searchParams.get('limit'))
+  const offset = Number.isSafeInteger(rawOffset) && rawOffset > 0 ? rawOffset : 0
+  const limit = Number.isSafeInteger(rawLimit) && rawLimit > 0 ? Math.min(rawLimit, MAX_RECORDINGS_LIMIT) : DEFAULT_LIMIT
   const from = searchParams.get('from') || ''
   const to = searchParams.get('to') || ''
   const openRecording = searchParams.get('recording') || null
+  const requestKey = JSON.stringify([id, offset, limit, from, to])
 
   function patchParams(patch) {
     setSearchParams((prev) => {
@@ -40,14 +47,21 @@ export default function CamRecordingsPage() {
   }
 
   const [cam, setCam] = useState(null)
-  const [data, setData] = useState({ items: [], total: 0 })
+  const [result, setResult] = useState(null)
   const [loading, setLoading] = useState(true)
-  const gate = useLoadGate(loading)
+  const [retry, setRetry] = useState(0)
+  const current = result?.key === requestKey ? result : null
+  const data = current?.data
+  const gate = useLoadGate(loading || !current, current?.error)
+  const currentCam = String(cam?.id) === String(id) ? cam : null
+  const canShare = role === 'admin' || (uid != null && currentCam && String(currentCam.owner) === String(uid))
 
   useEffect(() => {
+    let cancelled = false
     getCam(id)
-      .then(setCam)
-      .catch((e) => toast.error(e.message))
+      .then(value => { if (!cancelled) setCam(value) })
+      .catch((e) => { if (!cancelled) toast.error(e.message) })
+    return () => { cancelled = true }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [id])
 
@@ -57,16 +71,17 @@ export default function CamRecordingsPage() {
       setLoading(true)
       try {
         const res = await listRecordings(id, { offset, limit, from: from || undefined, to: to || undefined })
-        if (!cancelled) setData(res)
+        if (!cancelled) setResult({ key: requestKey, data: res })
       } catch (e) {
+        if (cancelled) return
         if (
           e instanceof ApiError &&
           (e.code === CODES.RECORDING_NOT_CONFIGURED || e.code === CODES.RECORDING_NOT_ALLOWED)
         ) {
           toast.error(e.message)
           navigate(`/cams/${id}`)
-        } else if (!cancelled) {
-          toast.error(e.message)
+        } else {
+          setResult({ key: requestKey, error: e.message || 'Не удалось загрузить записи' })
         }
       } finally {
         if (!cancelled) setLoading(false)
@@ -77,7 +92,7 @@ export default function CamRecordingsPage() {
       cancelled = true
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [id, offset, limit, from, to])
+  }, [id, offset, limit, from, to, requestKey, retry])
 
   return (
     <div>
@@ -92,7 +107,7 @@ export default function CamRecordingsPage() {
         }}
       >
         <h1 style={{ fontSize: 20, wordBreak: 'break-all' }}>
-          Архив записей{cam ? ` — ${cam.name || `${cam.address}:${cam.port}`}` : ''}
+          Архив записей{currentCam ? ` — ${currentCam.name || `${currentCam.address}:${currentCam.port}`}` : ''}
         </h1>
         <Button onClick={() => navigate(`/cams/${id}`)}>← к камере</Button>
       </div>
@@ -117,7 +132,7 @@ export default function CamRecordingsPage() {
       </div>
 
       {gate.busy ? (
-        <PageLoader gate={gate} />
+        <PageLoader gate={gate} onRetry={() => setRetry(value => value + 1)} />
       ) : data.items.length === 0 ? (
         <div style={{ fontSize: 13, color: colors.white[4] }}>Записи не найдены</div>
       ) : (
@@ -133,7 +148,7 @@ export default function CamRecordingsPage() {
                 alt=""
                 style={{ width: '100%', aspectRatio: '16 / 9', borderRadius: 10, marginBottom: 10 }}
               />
-              <div style={{ fontSize: 12, wordBreak: 'break-all', marginBottom: 4 }}>{rec.filename}</div>
+              <button type="button" onClick={(event) => { event.stopPropagation(); patchParams({ recording: rec.filename }) }} style={{ background: 'none', border: 0, color: 'inherit', cursor: 'pointer', font: 'inherit', fontSize: 12, wordBreak: 'break-all', padding: 0, marginBottom: 4, textAlign: 'start' }}>{rec.filename}</button>
               <div style={{ fontSize: 11, color: colors.white[4] }}>
                 {formatUnixTs(rec.started_at)} · {rec.format} · {formatBytes(rec.size_bytes)}
               </div>
@@ -142,17 +157,20 @@ export default function CamRecordingsPage() {
         </div>
       )}
 
-      <Pagination
+      {!gate.busy && <Pagination
         offset={offset}
         limit={limit}
         total={data.total}
+        maxLimit={MAX_RECORDINGS_LIMIT}
         onChange={(patch) => patchParams(patch)}
-      />
+      />}
 
       {openRecording && (
         <CamRecordingPlayerPage
+          key={`${id}:${openRecording}`}
           camId={id}
           filename={openRecording}
+          canShare={canShare}
           onClose={() => patchParams({ recording: null })}
         />
       )}

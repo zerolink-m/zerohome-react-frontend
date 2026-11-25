@@ -1,10 +1,8 @@
 import { WS_HTTP_BASE_URL, HOST_SWITCH_ENABLED, reportConfigCheck, getHostState } from './endpoints'
 import { CODES } from './codes'
 import { tracedFetch } from '../utils/webrtcDebug'
-import { normalizeFrontendVersion } from '../utils/frontendVersion'
-import packageJson from '../../package.json';
+import { FRONTEND_API_VERSION } from '../utils/frontendVersion'
 
-const FRONTEND_VERSION = normalizeFrontendVersion(import.meta.env.VITE_APP_VERSION || packageJson.version)
 const CHECK_INTERVAL = 5000 // Проверка каждые 5 секунд (пока есть подписчики — плееры)
 const CHECK_TIMEOUT = 8000 // таймаут одной проверки /config
 const MONITOR_HEALTHY_MS = 30_000 // фоновый мониторинг хоста, пока WS-хост здоров
@@ -30,7 +28,7 @@ async function performCheck() {
   checkPromise = (async () => {
     try {
       // Конвертируем ws:// или wss:// в http:// или https://
-      const url = `${WS_HTTP_BASE_URL}/config?v=${encodeURIComponent(FRONTEND_VERSION)}`
+      const url = `${WS_HTTP_BASE_URL}/config?v=${encodeURIComponent(FRONTEND_API_VERSION)}`
 
       const ac = new AbortController()
       const timer = setTimeout(() => ac.abort(), CHECK_TIMEOUT)
@@ -51,14 +49,10 @@ async function performCheck() {
       lastCheckAt = Date.now()
 
       // Сервер доступен и при ответах config об обновлении, включая обязательное.
-      const hostOk = response.status < 500 && [
-        CODES.OK,
-        CODES.FRONTEND_UPDATE_AVAILABLE,
-        CODES.FRONTEND_UPDATE_NEEDED,
-      ].includes(body?.code)
+      const newValue = [CODES.OK, CODES.FRONTEND_UPDATE_AVAILABLE].includes(body?.code)
+      const hostOk = newValue || body?.code === CODES.FRONTEND_UPDATE_NEEDED
       reportConfigCheck(hostOk, hostOk ? '' : `HTTP ${response.status}, code=${body?.code ?? 'нет JSON'}`)
 
-      const newValue = response.status === 200
       const changed = webrtcAvailable !== null && webrtcAvailable !== newValue
       webrtcAvailable = newValue
 

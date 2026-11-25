@@ -4,6 +4,7 @@ import { describeApiError } from '../../api/client'
 import { useToast } from '../../context/ToastContext'
 import DashCard from '../DashCard'
 import Button from '../Button'
+import Dialog from '../Dialog'
 import { colors } from '../../styles/tokens'
 
 const TTL_OPTIONS = [
@@ -15,15 +16,18 @@ const TTL_OPTIONS = [
   { label: '24 часа', value: 86400 },
 ]
 
-export default function ShareLinkDialog({ open, camId, switchId, deviceType, type, filename, onClose, sharePath, onCreated }) {
+export default function ShareLinkDialog({ open, ...props }) {
+  if (!open) return null
+  return <ShareLinkDialogContent {...props} />
+}
+
+function ShareLinkDialogContent({ camId, switchId, deviceType, type, filename, onClose, sharePath, onCreated }) {
   const deviceId = camId ?? switchId
   const device_type = deviceType ?? (camId ? 'cams' : 'switches')
   const toast = useToast()
   const [ttl, setTtl] = useState(3600)
   const [creating, setCreating] = useState(false)
   const [link, setLink] = useState('')
-
-  if (!open) return null
 
   async function handleCreate() {
     setCreating(true)
@@ -57,47 +61,30 @@ export default function ShareLinkDialog({ open, camId, switchId, deviceType, typ
     }
   }
 
-  function handleClose() {
-    setLink('')
-    setTtl(3600)
-    onClose()
-  }
-
   return (
-    <div
-      style={{
-        position: 'fixed',
-        inset: 0,
-        background: 'rgba(0,0,0,0.6)',
-        display: 'flex',
-        alignItems: 'center',
-        justifyContent: 'center',
-        zIndex: 300,
-        padding: 16,
-      }}
-      onClick={handleClose}
-    >
-      <div onClick={(e) => e.stopPropagation()}>
+    <Dialog open title="Поделиться ссылкой" onClose={onClose} blockClose={creating}>
         <DashCard style={{ maxWidth: 420 }}>
           <h3 style={{ fontSize: 16, marginBottom: 12 }}>Поделиться ссылкой</h3>
 
           {!link ? (
             <>
-              <div style={{ fontSize: 12, color: colors.white[4], marginBottom: 10 }}>Срок действия ссылки</div>
-              <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, marginBottom: 20 }}>
+              <div style={{ fontSize: '0.75rem', color: 'var(--muted-text)', marginBottom: 10 }}>Срок действия ссылки</div>
+              <div role="group" aria-label="Срок действия ссылки" style={{ display: 'flex', flexWrap: 'wrap', gap: 8, marginBottom: 20 }}>
                 {TTL_OPTIONS.map((opt) => (
                   <Button
                     key={opt.value}
                     small
                     variant={ttl === opt.value ? 'accent' : 'default'}
+                    aria-pressed={ttl === opt.value}
+                    disabled={creating}
                     onClick={() => setTtl(opt.value)}
                   >
                     {opt.label}
                   </Button>
                 ))}
               </div>
-              <div style={{ display: 'flex', gap: 12, justifyContent: 'flex-end' }}>
-                <Button onClick={handleClose} disabled={creating}>
+              <div style={{ display: 'flex', flexWrap: 'wrap', gap: 12, justifyContent: 'flex-end' }}>
+                <Button onClick={onClose} disabled={creating}>
                   Отмена
                 </Button>
                 <Button variant="accent" onClick={handleCreate} loading={creating}>
@@ -109,6 +96,7 @@ export default function ShareLinkDialog({ open, camId, switchId, deviceType, typ
             <>
               <input
                 readOnly
+                aria-label="Ссылка для доступа"
                 value={link}
                 onFocus={(e) => e.target.select()}
                 style={{
@@ -123,8 +111,8 @@ export default function ShareLinkDialog({ open, camId, switchId, deviceType, typ
                   fontFamily: "'JetBrains Mono', monospace",
                 }}
               />
-              <div style={{ display: 'flex', gap: 12, justifyContent: 'flex-end' }}>
-                <Button onClick={handleClose}>Закрыть</Button>
+              <div style={{ display: 'flex', flexWrap: 'wrap', gap: 12, justifyContent: 'flex-end' }}>
+                <Button onClick={onClose}>Закрыть</Button>
                 <Button variant="accent" onClick={handleCopy}>
                   Скопировать
                 </Button>
@@ -132,7 +120,6 @@ export default function ShareLinkDialog({ open, camId, switchId, deviceType, typ
             </>
           )}
         </DashCard>
-      </div>
-    </div>
+    </Dialog>
   )
 }

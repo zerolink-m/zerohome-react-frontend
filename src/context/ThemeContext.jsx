@@ -36,23 +36,25 @@ function getInitialThemeMode() {
   return 'system'
 }
 
+const DEFAULT_CUSTOM_THEME = {
+  bgType: 'gradient', // 'gradient' | 'solid'
+  bgColor: '#0a0a0f',
+  bgGradientStart: '#0a0a0f',
+  bgGradientEnd: '#1a1a2e',
+  cardBg: 'rgba(255, 255, 255, 0.03)',
+  textColor: '#ffffff',
+  accentColor: '#6366f1',
+  fontSize: 14,
+  cardSize: 'medium', // 'small' | 'medium' | 'large'
+  borderRadius: 24,
+}
+
 function getInitialCustomTheme() {
   try {
     const stored = localStorage.getItem(STORAGE_KEY_CUSTOM)
-    if (stored) return JSON.parse(stored)
+    if (stored) return { ...DEFAULT_CUSTOM_THEME, ...JSON.parse(stored) }
   } catch {}
-  return {
-    bgType: 'gradient', // 'gradient' | 'solid'
-    bgColor: '#0a0a0f',
-    bgGradientStart: '#0a0a0f',
-    bgGradientEnd: '#1a1a2e',
-    cardBg: 'rgba(255, 255, 255, 0.03)',
-    textColor: '#ffffff',
-    accentColor: '#6366f1',
-    fontSize: 14,
-    cardSize: 'medium', // 'small' | 'medium' | 'large'
-    borderRadius: 24,
-  }
+  return DEFAULT_CUSTOM_THEME
 }
 
 function getInitialPerformanceMode() {

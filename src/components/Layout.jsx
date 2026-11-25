@@ -1,12 +1,12 @@
 import { useEffect, useState } from 'react'
-import { Outlet } from 'react-router-dom'
+import { Outlet } from 'react-router'
 import Navbar from './Navbar'
 import FooterVersion from './FooterVersion'
 import { useBackendHealth } from '../context/HealthContext'
 import { useCompactNavbar } from '../hooks/useCompactNavbar'
 import { colors } from '../styles/tokens'
+import { FRONTEND_VERSION } from '../utils/frontendVersion'
 
-const FRONTEND_VERSION = import.meta.env.VITE_APP_VERSION || '1.0.0'
 const DISMISS_KEY = `zc-update-dismissed-for-${FRONTEND_VERSION}`
 
 function reloadApp() {

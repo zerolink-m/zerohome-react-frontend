@@ -1,5 +1,5 @@
-import { useState, useEffect, useRef } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { useState, useEffect, useId, useRef } from 'react'
+import { Link } from 'react-router'
 import T, { colors } from '../styles/tokens'
 
 // Карточка-плейсхолдер для добавления нового устройства.
@@ -12,10 +12,11 @@ import T, { colors } from '../styles/tokens'
 //                с этими вариантами. Выбор → navigate(`${createTo}?proto=${protoKey}`).
 //                Если не задан — обычная навигация на createTo.
 export default function AddDevicePlaceholder({ createTo, createText, addOptions }) {
-  const navigate = useNavigate()
   const [hover, setHover] = useState(false)
   const [menuOpen, setMenuOpen] = useState(false)
   const ref = useRef(null)
+  const triggerRef = useRef(null)
+  const optionsId = useId()
 
   const hasMenu = Array.isArray(addOptions) && addOptions.length > 0
 
@@ -28,25 +29,25 @@ export default function AddDevicePlaceholder({ createTo, createText, addOptions 
     return () => document.removeEventListener('mousedown', onDocClick)
   }, [menuOpen])
 
-  function handleClick() {
-    if (hasMenu) {
-      setMenuOpen((v) => !v)
-    } else {
-      navigate(createTo)
-    }
-  }
-
+  const Trigger = hasMenu ? 'button' : Link
   return (
-    <div ref={ref} style={{ minWidth: 0, minHeight: 120 }}>
-      <div
-        onClick={handleClick}
+    <div ref={ref} style={{ minWidth: 0, minHeight: 120 }} onKeyDown={(event) => {
+      if (menuOpen && event.key === 'Escape') {
+        setMenuOpen(false)
+        triggerRef.current?.focus()
+      }
+    }}>
+      <Trigger
+        ref={triggerRef}
+        {...(hasMenu ? { type: 'button', onClick: () => setMenuOpen((open) => !open), 'aria-expanded': menuOpen, 'aria-controls': optionsId } : { to: createTo })}
         onMouseEnter={() => setHover(true)}
         onMouseLeave={() => setHover(false)}
         style={{
           ...T.dashCard,
           background: 'transparent',
           border: `1px dashed ${hover ? colors.white[3] : colors.white[15]}`,
-          borderRadius: 24,
+          borderRadius: 'var(--card-radius)',
+          width: '100%',
           padding: 24,
           cursor: 'pointer',
           display: 'flex',
@@ -54,22 +55,23 @@ export default function AddDevicePlaceholder({ createTo, createText, addOptions 
           alignItems: 'center',
           justifyContent: 'center',
           minHeight: 120,
-          color: hover ? colors.white[7] : colors.white[4],
+          color: hover ? 'var(--text)' : 'var(--muted-text)',
           transition: '0.25s ease',
           boxShadow: 'none',
           backdropFilter: 'none',
         }}
       >
-        <div style={{ fontSize: 32, lineHeight: 1, marginBottom: 8 }}>+</div>
-        <div style={{ fontSize: 12, textAlign: 'center', fontFamily: "'JetBrains Mono', monospace" }}>
+        <span aria-hidden="true" style={{ fontSize: 32, lineHeight: 1, marginBottom: 8 }}>+</span>
+        <span style={{ fontSize: '0.75rem', textAlign: 'center', fontFamily: "'JetBrains Mono', monospace" }}>
           {createText}
-        </div>
-      </div>
+        </span>
+      </Trigger>
 
       {hasMenu && (
         // Меню в потоке (не поверх соседей): раскрытие двигает нижние элементы, а не перекрывает их.
         // Анимация высоты через grid-template-rows 0fr → 1fr.
         <div
+          id={optionsId}
           aria-hidden={!menuOpen}
           style={{
             display: 'grid',
@@ -94,14 +96,11 @@ export default function AddDevicePlaceholder({ createTo, createText, addOptions 
               }}
             >
               {addOptions.map((opt) => (
-                <button
+                <Link
                   key={opt.protoKey}
-                  type="button"
                   tabIndex={menuOpen ? 0 : -1}
-                  onClick={() => {
-                    setMenuOpen(false)
-                    navigate(`${createTo}?proto=${encodeURIComponent(opt.protoKey)}`)
-                  }}
+                  to={`${createTo}?proto=${encodeURIComponent(opt.protoKey)}`}
+                  onClick={() => setMenuOpen(false)}
                   style={{
                     background: 'none',
                     border: 'none',
@@ -118,7 +117,7 @@ export default function AddDevicePlaceholder({ createTo, createText, addOptions 
                   onMouseLeave={(e) => (e.currentTarget.style.background = 'none')}
                 >
                   {opt.label}
-                </button>
+                </Link>
               ))}
             </div>
           </div>

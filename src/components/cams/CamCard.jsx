@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { Link } from 'react-router'
 import DashCard from '../DashCard'
 import Spinner from '../Spinner'
 import Button from '../Button'
@@ -10,7 +10,6 @@ import { getState } from '../../api/authStore'
 import { sanitizeSnapshot } from '../../api/snapshots'
 
 export default function CamCard({ cam }) {
-  const navigate = useNavigate()
   const [hover, setHover] = useState(false)
   const [imageError, setImageError] = useState(false)
   const [imageSrc, setImageSrc] = useState(null)
@@ -60,7 +59,6 @@ export default function CamCard({ cam }) {
 
   return (
     <DashCard
-      onClick={() => navigate(`/cams/${cam.id}`, { state: { preview: sanitizeSnapshot(cam), uid: getState().uid } })}
       onMouseEnter={() => setHover(true)}
       onMouseLeave={() => setHover(false)}
       style={{
@@ -72,6 +70,7 @@ export default function CamCard({ cam }) {
         overflow: 'hidden',
       }}
     >
+      <Link className="card-open-link" to={`/cams/${cam.id}`} state={{ preview: sanitizeSnapshot(cam), uid: getState().uid }} aria-label={`Открыть камеру: ${cam.name || cam.id}`} />
       <div
         style={{
           position: 'absolute',
@@ -116,6 +115,7 @@ export default function CamCard({ cam }) {
               <div style={{ fontSize: 12, color: colors.white[4] }}>Не удалось загрузить</div>
               <Button
                 small
+                className="card-action"
                 onClick={(e) => {
                   e.stopPropagation()
                   setAttempt((a) => a + 1)

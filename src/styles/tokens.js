@@ -73,11 +73,11 @@ const T = {
     color: 'var(--text)',
   },
   label: {
-    fontSize: 11,
+    fontSize: '0.6875rem',
     fontFamily: fonts.mono,
     textTransform: 'uppercase',
     letterSpacing: '0.12em',
-    color: colors.white[3],
+    color: 'var(--muted-text)',
     display: 'block',
     marginBottom: 8,
   },
@@ -85,7 +85,7 @@ const T = {
   glassCard: {
     background: 'var(--card-bg)',
     border: `1px solid ${colors.white[8]}`,
-    borderRadius: 24,
+    borderRadius: 'var(--card-radius)',
     backdropFilter: 'blur(20px)',
     boxShadow: 'var(--card-shadow)',
     padding: 48,
@@ -98,7 +98,7 @@ const T = {
   dashCard: {
     background: 'var(--card-bg)',
     border: `1px solid ${colors.white[8]}`,
-    borderRadius: 24,
+    borderRadius: 'var(--card-radius)',
     backdropFilter: 'blur(20px)',
     boxShadow: 'var(--card-shadow)',
     padding: 24,
@@ -112,7 +112,7 @@ const T = {
     borderRadius: 14,
     padding: 14,
     color: 'var(--text)',
-    fontSize: 13,
+    fontSize: '0.8125rem',
     letterSpacing: '0.04em',
     fontFamily: fonts.mono,
     cursor: 'pointer',
@@ -142,7 +142,7 @@ const T = {
   },
   btnSmall: {
     padding: '8px 14px',
-    fontSize: 11,
+    fontSize: '0.6875rem',
   },
 
   input: {
@@ -151,7 +151,7 @@ const T = {
     borderRadius: 14,
     padding: '12px 16px',
     color: 'var(--text)',
-    fontSize: 14,
+    fontSize: '0.875rem',
     fontFamily: fonts.mono,
     width: '100%',
     transition: '0.25s ease',
@@ -166,7 +166,7 @@ const T = {
     boxShadow: '0 0 0 3px var(--status-red-ring)',
   },
   errorText: {
-    fontSize: 11,
+    fontSize: '0.6875rem',
     color: 'var(--status-red-text-strong)',
     marginTop: 6,
   },

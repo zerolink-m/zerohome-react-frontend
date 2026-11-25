@@ -1,5 +1,5 @@
-import { useEffect, useState } from 'react'
-import { Link } from 'react-router-dom'
+import { useEffect, useRef, useState } from 'react'
+import { Link } from 'react-router'
 import { getNode, listNodes, patchNode } from '../api/nodes'
 import Button from '../components/Button'
 import DashCard from '../components/DashCard'
@@ -44,6 +44,10 @@ function sameJson(left, right) {
   return JSON.stringify(left) === JSON.stringify(right)
 }
 
+function settingValueForSave(value, savedValue) {
+  return typeof savedValue === 'number' && value !== '' ? Number(value) : value
+}
+
 function ValueDisplay({ label, value }) {
   return (
     <div style={{ minWidth: 0 }}>
@@ -53,8 +57,8 @@ function ValueDisplay({ label, value }) {
   )
 }
 
-function SettingControl({ name, value, onChange }) {
-  if (isSensitive(name, value)) {
+function SettingControl({ name, value, savedValue, onChange }) {
+  if (isSensitive(name, savedValue)) {
     return (
       <div style={{ padding: 12, borderRadius: 10, border: `1px solid ${colors.statuses.yellow.border}`, background: colors.statuses.yellow.bg }}>
         <Pill variant="yellow">секрет скрыт</Pill>
@@ -63,15 +67,15 @@ function SettingControl({ name, value, onChange }) {
     )
   }
 
-  if (typeof value === 'boolean') {
+  if (typeof savedValue === 'boolean') {
     return <Toggle checked={value} onChange={onChange} label={name} />
   }
 
-  if (typeof value === 'number') {
-    return <InputField label={name} type="number" step="any" value={value} onChange={(event) => onChange(event.target.value === '' ? '' : Number(event.target.value))} />
+  if (typeof savedValue === 'number') {
+    return <InputField label={name} type="number" step="any" value={value} onChange={(event) => onChange(event.target.value)} />
   }
 
-  if (typeof value === 'string') {
+  if (typeof savedValue === 'string') {
     return <InputField label={name} value={value} onChange={(event) => onChange(event.target.value)} />
   }
 
@@ -130,6 +134,8 @@ export default function AdminNodesPage() {
   const [loading, setLoading] = useState(true)
   const [loadError, setLoadError] = useState(null)
   const [detailLoading, setDetailLoading] = useState(false)
+  const [detailError, setDetailError] = useState(null)
+  const detailRequest = useRef(0)
   const [saving, setSaving] = useState(false)
   const [restartRequired, setRestartRequired] = useState(false)
   const [editError, setEditError] = useState(null)
@@ -141,7 +147,9 @@ export default function AdminNodesPage() {
     try {
       const result = await listNodes({ limit: 255, offset: 0 })
       setNodes(result.items)
-      if (selectedId == null && result.items.length) setSelectedId(result.items[0].node_id)
+      setSelectedId((current) => result.items.some((item) => item.node_id === current)
+        ? current
+        : result.items[0]?.node_id ?? null)
     } catch (error) {
       setLoadError(error.message || 'Не удалось загрузить список нод')
       toast.error(error.message || 'Не удалось загрузить список нод')
@@ -152,10 +160,13 @@ export default function AdminNodesPage() {
 
   async function loadNode(nodeId) {
     if (nodeId == null) return
+    const request = ++detailRequest.current
     setDetailLoading(true)
+    setDetailError(null)
     setEditError(null)
     try {
       const result = await getNode(nodeId)
+      if (request !== detailRequest.current) return
       const current = result.node
       const nextSettings = cloneRecord(current?.settings)
       const nextCapabilities = cloneRecord(current?.capabilities)
@@ -166,14 +177,19 @@ export default function AdminNodesPage() {
       setSavedCapabilities(nextCapabilities)
       setRevision(result.revision)
     } catch (error) {
-      toast.error(error.message || 'Не удалось загрузить конфигурацию ноды')
+      if (request !== detailRequest.current) return
+      setNode(null)
+      setDetailError(error.message || 'Не удалось загрузить конфигурацию ноды')
     } finally {
-      setDetailLoading(false)
+      if (request === detailRequest.current) setDetailLoading(false)
     }
   }
 
   useEffect(() => { loadNodes() }, [])
-  useEffect(() => { if (selectedId != null) loadNode(selectedId) }, [selectedId])
+  useEffect(() => {
+    if (selectedId != null) loadNode(selectedId)
+    return () => { detailRequest.current += 1 }
+  }, [selectedId])
 
   function updateSetting(key, value) {
     setSettingsDraft((current) => ({ ...current, [key]: value }))
@@ -190,15 +206,16 @@ export default function AdminNodesPage() {
   }
 
   async function save() {
-    if (!node) return
+    if (!node || node.node_id !== selectedId || detailLoading || saving) return
     const settingsPatch = {}
     for (const [key, value] of Object.entries(settingsDraft)) {
-      if (isSensitive(key, value)) continue
-      if (typeof savedSettings[key] === 'number' && value === '') {
+      if (isSensitive(key, savedSettings[key])) continue
+      const next = settingValueForSave(value, savedSettings[key])
+      if (typeof savedSettings[key] === 'number' && !Number.isFinite(next)) {
         setEditError(`Настройка «${key}» должна быть числом.`)
         return
       }
-      if (!sameJson(value, savedSettings[key])) settingsPatch[key] = value
+      if (!sameJson(next, savedSettings[key])) settingsPatch[key] = next
     }
 
     for (const [name, rawPolicy] of Object.entries(capabilitiesDraft)) {
@@ -234,7 +251,10 @@ export default function AdminNodesPage() {
     }
   }
 
-  const settingsChanged = Object.entries(settingsDraft).some(([key, value]) => !isSensitive(key, value) && !sameJson(value, savedSettings[key]))
+  const settingsChanged = Object.entries(settingsDraft).some(([key, value]) => {
+    const saved = savedSettings[key]
+    return !isSensitive(key, saved) && !sameJson(settingValueForSave(value, saved), saved)
+  })
   const capabilitiesChanged = !sameJson(capabilitiesDraft, savedCapabilities)
   const dirty = settingsChanged || capabilitiesChanged
 
@@ -245,7 +265,7 @@ export default function AdminNodesPage() {
           <Link to="/admin" style={{ color: colors.white[4], fontSize: 12, textDecoration: 'none' }}>← Админ-панель</Link>
           <h1 style={{ fontSize: 20, margin: '10px 0 0' }}>Ноды</h1>
         </div>
-        <Button onClick={loadNodes} loading={loading}>Обновить список</Button>
+        <Button onClick={loadNodes} loading={loading} disabled={saving}>Обновить список</Button>
       </div>
 
       {restartRequired && <div role="status" style={{ marginBottom: 16, padding: '12px 16px', borderRadius: 12, background: colors.statuses.yellow.bg, border: `1px solid ${colors.statuses.yellow.border}`, color: colors.statuses.yellow.text, fontSize: 13 }}>Изменения сохранены. Для их применения требуется перезапуск.</div>}
@@ -258,7 +278,13 @@ export default function AdminNodesPage() {
             <h2 style={{ fontSize: 15, margin: '0 0 12px' }}>Зарегистрированные ноды</h2>
             <div style={{ display: 'grid', gap: 8 }}>
               {nodes.map((item) => (
-                <button key={item.node_id} type="button" onClick={() => setSelectedId(item.node_id)} aria-current={selectedId === item.node_id ? 'true' : undefined} style={{ textAlign: 'left', cursor: 'pointer', padding: 12, color: colors.text, background: selectedId === item.node_id ? 'var(--accent-bg)' : 'var(--card-bg)', border: `1px solid ${selectedId === item.node_id ? 'var(--accent-border)' : colors.white[8]}`, borderRadius: 12 }}>
+                <button key={item.node_id} type="button" disabled={saving} onClick={() => {
+                  if (item.node_id === selectedId) return
+                  detailRequest.current += 1
+                  setDetailError(null)
+                  setDetailLoading(true)
+                  setSelectedId(item.node_id)
+                }} aria-current={selectedId === item.node_id ? 'true' : undefined} style={{ textAlign: 'left', cursor: saving ? 'default' : 'pointer', padding: 12, color: colors.text, background: selectedId === item.node_id ? 'var(--accent-bg)' : 'var(--card-bg)', border: `1px solid ${selectedId === item.node_id ? 'var(--accent-border)' : colors.white[8]}`, borderRadius: 12 }}>
                   <strong style={{ display: 'block', overflowWrap: 'anywhere' }}>{item.node_id}</strong>
                   <span style={{ display: 'block', marginTop: 7, fontSize: 12, color: colors.white[4], overflowWrap: 'anywhere' }}>{item.address || 'Адрес не указан'}</span>
                   <span style={{ display: 'block', marginTop: 4, fontSize: 11, color: colors.white[3] }}>Версия: {item.version || '—'}</span>
@@ -273,7 +299,12 @@ export default function AdminNodesPage() {
             <DashCard style={{ padding: 18, minWidth: 0 }}>
               {!selectedId ? <div style={{ color: colors.white[4], fontSize: 13 }}>Выберите ноду.</div> : detailLoading ? (
                 <div role="status" style={{ color: colors.white[4], fontSize: 13 }}>Загружаем конфигурацию…</div>
-              ) : node ? (
+              ) : detailError ? (
+                <div>
+                  <p role="alert" style={{ color: colors.statuses.red.text, fontSize: 13 }}>{detailError}</p>
+                  <Button small onClick={() => loadNode(selectedId)}>Повторить</Button>
+                </div>
+              ) : node?.node_id === selectedId ? (
                 <>
                   <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap' }}>
                     <div>
@@ -290,7 +321,7 @@ export default function AdminNodesPage() {
               ) : <div style={{ color: colors.white[4], fontSize: 13 }}>Данные ноды недоступны.</div>}
             </DashCard>
 
-            {node && !detailLoading && (
+            {node?.node_id === selectedId && !detailLoading && !detailError && (
               <>
                 <section aria-labelledby="node-settings-title">
                   <div style={{ margin: '0 0 12px' }}>
@@ -303,7 +334,7 @@ export default function AdminNodesPage() {
                     <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(min(100%, 220px), 1fr))', gap: 12 }}>
                       {Object.entries(settingsDraft).map(([key, value]) => (
                         <DashCard key={key} style={{ padding: 14, minWidth: 0 }}>
-                          <SettingControl name={key} value={value} onChange={(next) => updateSetting(key, next)} />
+                          <SettingControl name={key} value={value} savedValue={savedSettings[key]} onChange={(next) => updateSetting(key, next)} />
                         </DashCard>
                       ))}
                     </div>

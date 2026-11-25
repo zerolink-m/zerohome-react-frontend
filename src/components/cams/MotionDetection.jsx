@@ -1,8 +1,8 @@
-import { useState, useEffect } from 'react'
+import { useEffect, useState } from 'react'
 import { getMotionStatus, startMotionDetection, stopMotionDetection, patchPushSettings } from '../../api/cams'
+import { CODES } from '../../api/codes'
 import PushSettings from './PushSettings'
 import { useToast } from '../../context/ToastContext'
-import { useAuth } from '../../context/AuthContext'
 import Toggle from '../Toggle'
 import { colors } from '../../styles/tokens'
 import { useLoadGate } from '../../hooks/useLoadGate'
@@ -11,86 +11,72 @@ import PageLoader from '../PageLoader'
 export default function MotionDetection({ camId }) {
   const [status, setStatus] = useState(null)
   const [loading, setLoading] = useState(true)
-  const gate = useLoadGate(loading)
+  const [loadError, setLoadError] = useState(null)
+  const [reloadTick, setReloadTick] = useState(0)
+  const gate = useLoadGate(loading, loadError)
   const [actionLoading, setActionLoading] = useState(false)
-  const [pushKey, setPushKey] = useState(0) // перемонтирует настройки push после скрытого включения
   const toast = useToast()
-  const { profile, refreshProfile } = useAuth()
 
   useEffect(() => {
-    // Обновляем профиль при монтировании компонента
-    refreshProfile()
-    loadStatus()
-  }, [camId, refreshProfile])
-
-  async function loadStatus() {
-    try {
-      setLoading(true)
-      const data = await getMotionStatus(camId)
-      setStatus(data)
-    } catch (err) {
-      toast.error(err.message || 'Ошибка загрузки статуса детекции')
-    } finally {
-      setLoading(false)
-    }
-  }
+    let cancelled = false
+    setLoading(true)
+    setLoadError(null)
+    getMotionStatus(camId)
+      .then((data) => { if (!cancelled) setStatus(data) })
+      .catch((error) => { if (!cancelled) setLoadError(error.message || 'Ошибка загрузки статуса детекции') })
+      .finally(() => { if (!cancelled) setLoading(false) })
+    return () => { cancelled = true }
+  }, [camId, reloadTick])
 
   async function handleToggle(enabled) {
     try {
       setActionLoading(true)
-      if (enabled) {
-        // Порядок: сначала (скрыто) push по движению, потом сама детекция, потом открываются настройки push.
-        await patchPushSettings(camId, { motion_detection_enabled: 1 })
-        await startMotionDetection(camId)
-        setPushKey((k) => k + 1)
-      } else {
-        await stopMotionDetection(camId)
+      // Разрешение на запуск проверяет сервер по владельцу камеры.
+      const nextStatus = enabled ? await startMotionDetection(camId) : await stopMotionDetection(camId)
+      setStatus(nextStatus)
+      if (Boolean(nextStatus.is_active) !== enabled) {
+        toast.warning(enabled ? 'Сервер не подтвердил запуск детекции.' : 'Сервер не подтвердил остановку детекции.')
+        return
       }
-      // Перезагружаем статус с сервера после изменения
-      await loadStatus()
+      if (enabled) {
+        try {
+          await patchPushSettings(camId, { motion_detection_enabled: 1 })
+        } catch {
+          toast.warning('Детекция запущена, но уведомления не удалось включить. Их можно настроить отдельно.')
+          return
+        }
+      }
       toast.success(enabled ? 'Детекция движения запущена' : 'Детекция движения остановлена')
     } catch (err) {
-      toast.error(err.message || 'Ошибка изменения статуса детекции')
+      toast.error(enabled && err.code === CODES.FORBIDDEN_RESOURCE
+        ? 'Запуск детекции недоступен. Проверьте разрешение владельца камеры.'
+        : err.message || 'Ошибка изменения статуса детекции')
     } finally {
       setActionLoading(false)
     }
   }
 
   if (gate.busy) {
-    return <PageLoader gate={gate} compact />
-  }
-
-  // Проверка разрешения на использование детекции движения
-  const isAllowed = profile?.motion_detection_allowed === 1
-
-  if (!isAllowed) {
-    return (
-      <div style={{ padding: 16, fontSize: 13, color: colors.white[4], lineHeight: 1.6 }}>
-        <p style={{ marginBottom: 8 }}>⚠️ Детекция движения недоступна для вашего аккаунта.</p>
-        <p>Обратитесь к администратору для активации этой функции.</p>
-      </div>
-    )
+    return <PageLoader gate={gate} compact onRetry={() => setReloadTick((tick) => tick + 1)} />
   }
 
   return (
     <div style={{ padding: 16 }}>
       <div style={{ marginBottom: 12 }}>
-        <label style={{ fontSize: 13, color: colors.white[4], display: 'block', marginBottom: 8 }}>
-          Детекция движения
-        </label>
         <Toggle
-          checked={status?.is_active || false}
+          label="Детекция движения"
+          checked={Boolean(status?.is_active)}
           onChange={handleToggle}
           disabled={actionLoading}
         />
       </div>
-      {status?.is_active && (
+      {status?.is_active && !actionLoading && (
         <>
           <div style={{ fontSize: 12, color: colors.white[3], marginTop: 8 }}>
             Система активно отслеживает движение в кадре
           </div>
           <div style={{ marginTop: 16 }}>
-            <PushSettings key={pushKey} camId={camId} section="motion" />
+            <PushSettings camId={camId} section="motion" />
           </div>
         </>
       )}

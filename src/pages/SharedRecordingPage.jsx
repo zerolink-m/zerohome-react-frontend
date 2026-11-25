@@ -1,6 +1,7 @@
-import { useParams, useSearchParams } from 'react-router-dom'
+import { useParams, useSearchParams } from 'react-router'
 import { recordingFileUrlWithToken } from '../api/cams'
 import { colors } from '../styles/tokens'
+import RecordingVideo from '../components/cams/RecordingVideo'
 
 export default function SharedRecordingPage() {
   const { camId } = useParams()
@@ -18,14 +19,9 @@ export default function SharedRecordingPage() {
 
   return (
     <div style={centerStyle}>
-      <div style={{ width: '100%', maxWidth: 900 }}>
+      <div style={{ width: '100%', maxWidth: 900, color: '#fff' }}>
         <h2 style={{ fontSize: 16, marginBottom: 16, wordBreak: 'break-all', color: '#fff' }}>{filename}</h2>
-        <video
-          controls
-          autoPlay
-          style={{ width: '100%', borderRadius: 14, background: '#000' }}
-          src={recordingFileUrlWithToken(camId, filename, token)}
-        />
+        <RecordingVideo key={JSON.stringify([camId, filename, token])} src={recordingFileUrlWithToken(camId, filename, token)} errorMessage="Не удалось воспроизвести запись. Проверьте подключение и срок действия ссылки." />
       </div>
     </div>
   )

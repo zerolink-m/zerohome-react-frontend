@@ -3,9 +3,46 @@ import { getAccessToken } from './authStore'
 import { tlog } from '../utils/timingsLog'
 
 // GET /v1/config/frontend/supported_streams
-// Получить список поддерживаемых форматов стриминга
-export function getSupportedStreams() {
-  return request('/config/frontend/supported_streams', { auth: false }).then(data => data.streams || [])
+// Все плееры одного хоста используют один запрос и общий интервал повтора.
+const STREAM_FORMATS_TTL_MS = 30_000
+const STREAM_FORMATS_RETRY_MIN_MS = 4_000
+const STREAM_FORMATS_RETRY_MAX_MS = 60_000
+const streamFormatsByHost = new Map()
+
+export async function getSupportedStreams({ refresh = false } = {}) {
+  const host = getBaseUrl()
+  let entry = streamFormatsByHost.get(host)
+  if (!entry) {
+    entry = { formats: null, error: null, pending: null, updatedAt: 0, retryAt: 0, failures: 0 }
+    streamFormatsByHost.set(host, entry)
+  }
+  if (entry.pending) return entry.pending
+  const now = Date.now()
+  if (entry.error && now < entry.retryAt) throw entry.error
+  if (entry.formats && now - entry.updatedAt < (refresh ? 1000 : STREAM_FORMATS_TTL_MS)) return entry.formats
+
+  entry.pending = request('/config/frontend/supported_streams', { auth: false })
+    .then((data) => {
+      entry.formats = Array.isArray(data?.streams) ? data.streams : []
+      entry.updatedAt = Date.now()
+      entry.error = null
+      entry.failures = 0
+      return entry.formats
+    })
+    .catch((error) => {
+      entry.error = error
+      entry.formats = null
+      const delay = Math.min(STREAM_FORMATS_RETRY_MAX_MS, STREAM_FORMATS_RETRY_MIN_MS * 2 ** entry.failures)
+      entry.failures += 1
+      entry.retryAt = Date.now() + Math.max(delay, (error?.retryAfter || 0) * 1000)
+      throw error
+    })
+    .finally(() => { entry.pending = null })
+  return entry.pending
+}
+
+export function getSupportedStreamsRetryDelay() {
+  return Math.max(1000, (streamFormatsByHost.get(getBaseUrl())?.retryAt || 0) - Date.now())
 }
 
 // Построить URL для HLS плейлиста

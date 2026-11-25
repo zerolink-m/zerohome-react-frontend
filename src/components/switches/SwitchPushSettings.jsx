@@ -62,6 +62,7 @@ export default function SwitchPushSettings({ switchId }) {
           Включить уведомления
         </label>
         <Toggle
+          aria-label="Уведомления выключателя"
           checked={Boolean(settings.enabled)}
           onChange={(checked) => updateSetting('enabled', checked ? 1 : 0)}
         />
@@ -75,6 +76,7 @@ export default function SwitchPushSettings({ switchId }) {
               Устройство в сети
             </label>
             <Toggle
+              aria-label="Устройство в сети"
               checked={Boolean(settings.notify_online)}
               onChange={(checked) => updateSetting('notify_online', checked ? 1 : 0)}
             />
@@ -84,6 +86,7 @@ export default function SwitchPushSettings({ switchId }) {
               Устройство не отвечает
             </label>
             <Toggle
+              aria-label="Устройство не отвечает"
               checked={Boolean(settings.notify_offline)}
               onChange={(checked) => updateSetting('notify_offline', checked ? 1 : 0)}
             />
@@ -93,6 +96,7 @@ export default function SwitchPushSettings({ switchId }) {
               Изменение состояния
             </label>
             <Toggle
+              aria-label="Изменение состояния выключателя"
               checked={Boolean(settings.notify_state_change)}
               onChange={(checked) => updateSetting('notify_state_change', checked ? 1 : 0)}
             />

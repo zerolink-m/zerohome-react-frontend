@@ -1,8 +1,9 @@
 import { useEffect, useState } from 'react'
 import { getRecording, recordingFileUrl } from '../api/cams'
-import { useToast } from '../context/ToastContext'
 import Button from '../components/Button'
+import Dialog from '../components/Dialog'
 import ShareLinkDialog from '../components/cams/ShareLinkDialog'
+import RecordingVideo from '../components/cams/RecordingVideo'
 import { colors } from '../styles/tokens'
 import { formatUnixTs, formatBytes } from '../utils/format'
 import { useLoadGate } from '../hooks/useLoadGate'
@@ -10,26 +11,24 @@ import PageLoader from '../components/PageLoader'
 
 // Оверлей поверх CamRecordingsPage — не отдельная страница, чтобы список записей
 // оставался на экране. filename идентифицирует запись (у записей нет отдельного id).
-export default function CamRecordingPlayerPage({ camId, filename, onClose }) {
-  const toast = useToast()
-
+export default function CamRecordingPlayerPage({ camId, filename, canShare, onClose }) {
   const [recording, setRecording] = useState(null)
   const [loading, setLoading] = useState(true)
-  const gate = useLoadGate(loading)
+  const [loadError, setLoadError] = useState(null)
+  const [retry, setRetry] = useState(0)
+  const gate = useLoadGate(loading, loadError)
   const [sharing, setSharing] = useState(false)
 
   useEffect(() => {
     let cancelled = false
     async function load() {
       setLoading(true)
+      setLoadError(null)
       try {
         const data = await getRecording(camId, filename)
         if (!cancelled) setRecording(data)
       } catch (e) {
-        if (!cancelled) {
-          toast.error(e.message)
-          onClose()
-        }
+        if (!cancelled) setLoadError(e.message || 'Не удалось загрузить данные записи')
       } finally {
         if (!cancelled) setLoading(false)
       }
@@ -38,27 +37,11 @@ export default function CamRecordingPlayerPage({ camId, filename, onClose }) {
     return () => {
       cancelled = true
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [camId, filename])
+  }, [camId, filename, retry])
 
   return (
-    <div
-      style={{
-        position: 'fixed',
-        inset: 0,
-        background: 'rgba(0,0,0,0.7)',
-        display: 'flex',
-        alignItems: 'center',
-        justifyContent: 'center',
-        zIndex: 200,
-        padding: 16,
-      }}
-      onClick={onClose}
-    >
-      <div
-        onClick={(e) => e.stopPropagation()}
-        style={{ width: '100%', maxWidth: 900, background: '#05070d', borderRadius: 16, padding: 20 }}
-      >
+    <Dialog open title="Просмотр записи" onClose={onClose} style={{ width: 'min(100%, 940px)', padding: 20, background: 'var(--bg)', color: 'var(--text)' }}>
+      <div>
         <div
           style={{
             display: 'flex',
@@ -71,25 +54,20 @@ export default function CamRecordingPlayerPage({ camId, filename, onClose }) {
         >
           <h2 style={{ fontSize: 16, wordBreak: 'break-all' }}>{filename}</h2>
           <div style={{ display: 'flex', gap: 8 }}>
-            <Button small onClick={() => setSharing(true)}>
+            {canShare && recording && <Button small onClick={() => setSharing(true)}>
               Поделиться
-            </Button>
-            <Button small onClick={onClose}>
+            </Button>}
+            <Button small data-dialog-initial-focus onClick={onClose}>
               Закрыть ✕
             </Button>
           </div>
         </div>
 
         {gate.busy ? (
-          <PageLoader gate={gate} compact />
+          <PageLoader gate={gate} compact onRetry={() => setRetry(value => value + 1)} />
         ) : recording ? (
           <>
-            <video
-              controls
-              autoPlay
-              style={{ width: '100%', borderRadius: 14, background: '#000' }}
-              src={recordingFileUrl(camId, filename)}
-            />
+            <RecordingVideo src={recordingFileUrl(camId, filename)} />
             <div style={{ fontSize: 12, color: colors.white[4], marginTop: 12 }}>
               {formatUnixTs(recording.started_at)} · {recording.format} · {formatBytes(recording.size_bytes)}
             </div>
@@ -97,14 +75,14 @@ export default function CamRecordingPlayerPage({ camId, filename, onClose }) {
         ) : null}
       </div>
 
-      <ShareLinkDialog
+      {canShare && <ShareLinkDialog
         open={sharing}
         camId={camId}
         deviceType="cams"
         type="record"
         filename={filename}
         onClose={() => setSharing(false)}
-      />
-    </div>
+      />}
+    </Dialog>
   )
 }

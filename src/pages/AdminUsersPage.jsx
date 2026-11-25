@@ -1,5 +1,4 @@
 import { useEffect, useState } from 'react'
-import { Link } from 'react-router-dom'
 import { listUsers, createUser, patchUser, deleteUser } from '../api/users'
 import { useToast } from '../context/ToastContext'
 import { SEARCH_COLUMNS, SEARCH_COLUMN_LABELS, DEFAULT_LIMIT } from '../api/pagination'
@@ -77,6 +76,7 @@ function UserForm({ initial, onSubmit, onCancel, submitLabel, isEdit }) {
               Разрешить запись
             </label>
             <Toggle
+              aria-label="Разрешить запись"
               checked={form.allow_record === 1}
               onChange={(v) => setForm({ ...form, allow_record: v ? 1 : 0 })}
             />
@@ -86,6 +86,7 @@ function UserForm({ initial, onSubmit, onCancel, submitLabel, isEdit }) {
               Разрешить Tuya Local
             </label>
             <Toggle
+              aria-label="Разрешить Tuya Local"
               checked={form.allow_tuya_local === 1}
               onChange={(v) => setForm({ ...form, allow_tuya_local: v ? 1 : 0 })}
             />
@@ -95,6 +96,7 @@ function UserForm({ initial, onSubmit, onCancel, submitLabel, isEdit }) {
               Разрешить детекцию движения
             </label>
             <Toggle
+              aria-label="Разрешить детекцию движения"
               checked={form.motion_detection_allowed === 1}
               onChange={(v) => setForm({ ...form, motion_detection_allowed: v ? 1 : 0 })}
             />
@@ -264,9 +266,7 @@ export default function AdminUsersPage() {
                     </div>
                   </div>
                   <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-                    <Link to={`/admin/users/${u.id}/sessions`}>
-                      <Button small>Сессии</Button>
-                    </Link>
+                    <Button to={`/admin/users/${u.id}/sessions`} small>Сессии</Button>
                     <Button
                       small
                       onClick={() => {

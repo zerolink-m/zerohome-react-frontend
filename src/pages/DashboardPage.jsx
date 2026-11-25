@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { useNavigate } from 'react-router'
 import { useAuth } from '../context/AuthContext'
 import { listCams } from '../api/cams'
 import { listSwitches } from '../api/switches'
@@ -51,7 +51,7 @@ export default function DashboardPage() {
     requestAnimationFrame(() => {
       const el = document.getElementById(hash)
       if (el && scrolledForRef.current !== hash) {
-        el.scrollIntoView({ block: 'start', behavior: 'smooth' })
+        el.scrollIntoView({ block: 'start', behavior: window.matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth' })
         scrolledForRef.current = hash
       }
     })
@@ -72,6 +72,7 @@ export default function DashboardPage() {
         sectionId="cams"
         title="Камеры"
         type="cams"
+        reorderable
         load={listCams}
         CardComponent={CamCard}
         cardProp="cam"
@@ -103,6 +104,7 @@ export default function DashboardPage() {
         sectionId="switches"
         title="Выключатели"
         type="switches"
+        reorderable
         load={listSwitches}
         CardComponent={SwitchCard}
         cardProp="switchItem"
@@ -120,6 +122,7 @@ export default function DashboardPage() {
         sectionId="connections"
         title="Соединения"
         type="connections"
+        reorderable
         load={listConnections}
         CardComponent={ConnectionCard}
         cardProp="connection"

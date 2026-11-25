@@ -1,9 +1,8 @@
 import { useEffect, useState, useRef, useCallback } from 'react'
-import { getSupportedStreams } from '../../api/streaming'
-import { checkWebRTCAvailability, subscribeToWebRTCChanges, getWebRTCStatus } from '../../api/webrtcCheck'
+import { getSupportedStreams, getSupportedStreamsRetryDelay } from '../../api/streaming'
+import { checkWebRTCAvailability, subscribeToWebRTCChanges } from '../../api/webrtcCheck'
 import { checkBrowserSupport, selectBestFormat, getFormatDescription } from '../../utils/streamFormats'
 import { useTheme } from '../../context/ThemeContext'
-import { colors } from '../../styles/tokens'
 import { debugLog } from '../../utils/debugLog'
 import WebRTCPlayer from './WebRTCPlayer'
 import { webrtcLog } from '../../utils/webrtcDebug'
@@ -43,6 +42,7 @@ const makeFormat = (list, key) =>
 // latencyOverlay — показывать задержку поверх видео (в сетке multi-view), а не над окном.
 export default function VideoStreamUniversal({ camId, authToken, children, latencyOverlay = false }) {
   const containerRef = useRef(null)
+  const formatButtonRef = useRef(null)
   const latencySetterRef = useRef(null)
   const handleLatency = useCallback((v) => latencySetterRef.current?.(v), [])
   const { preferredStreamFormat } = useTheme()
@@ -55,11 +55,11 @@ export default function VideoStreamUniversal({ camId, authToken, children, laten
   const [attempt, setAttempt] = useState(0) // счётчик попыток — перемонтирует плеер
   const [reconnectMsg, setReconnectMsg] = useState('')
   const retryTimerRef = useRef(null)
-  const [forcedFormat, setForcedFormat] = useState(null) // ПРИНУДИТЕЛЬНО выбранный формат (долгое нажатие)
+  const [forcedFormat, setForcedFormat] = useState(null)
   const forcedRef = useRef(null)
   forcedRef.current = forcedFormat
-  const pressTimerRef = useRef(null)
-  const longPressedRef = useRef(false)
+  const [formatRequest, setFormatRequest] = useState(0)
+  const [forceChoice, setForceChoice] = useState(false)
   const cycleRef = useRef(0) // сколько полных кругов по форматам без успеха
   const manualFormatRef = useRef(null) // формат, выбранный пользователем вручную
   const webrtcOkRef = useRef(true)
@@ -70,7 +70,10 @@ export default function VideoStreamUniversal({ camId, authToken, children, laten
   currentFormatRef.current = selectedFormat?.format
   formatsRef.current = supportedFormats
 
-  useEffect(() => () => clearTimeout(retryTimerRef.current), [])
+  useEffect(() => () => {
+    clearTimeout(retryTimerRef.current)
+    retryTimerRef.current = null
+  }, [camId, authToken])
   const [isFullscreen, setIsFullscreen] = useState(false)
 
   useEffect(() => {
@@ -112,17 +115,18 @@ export default function VideoStreamUniversal({ camId, authToken, children, laten
     async function loadFormats() {
       try {
         debugLog('stream', 'loading supported formats')
-        const data = await getSupportedStreams()
+        const data = await getSupportedStreams({ refresh: formatRequest > 0 })
 
         if (cancelled) return
 
-        const formats = data || []
+        const formats = data.filter(item => item && Object.prototype.hasOwnProperty.call(FORMAT_NAMES, item.format))
         debugLog('stream', 'supported formats from server', formats)
 
         setSupportedFormats(formats)
 
         // Проверяем доступность WebRTC через специальный endpoint
         const webrtcServerAvailable = await checkWebRTCAvailability()
+        if (cancelled) return
         webrtcOkRef.current = webrtcServerAvailable
         debugLog('stream', 'webrtc server availability check', { available: webrtcServerAvailable })
 
@@ -141,17 +145,19 @@ export default function VideoStreamUniversal({ camId, authToken, children, laten
         // Выбираем формат с учётом предпочтения пользователя
         const best = forcedRef.current
           ? makeFormat(formats, forcedRef.current)
-          : selectBestFormat(formats, effectiveSupport, manualFormatRef.current || preferredStreamFormat)
+          : formats.find(f => f.enabled && f.format === manualFormatRef.current) ||
+            selectBestFormat(formats.filter(f => effectiveSupport[f.format]), effectiveSupport, preferredStreamFormat)
         debugLog('stream', 'selected format', best)
 
         setSelectedFormat(best)
+        setErrorMessage('')
         setStatus('ready')
       } catch (e) {
         if (cancelled) return
         debugLog('stream', 'error loading formats', e)
         setStatus('error')
         setErrorMessage('Не удалось загрузить список форматов. Повторяем попытку…')
-        timer = setTimeout(loadFormats, 4000) // бесконечные попытки
+        timer = setTimeout(loadFormats, getSupportedStreamsRetryDelay())
       }
     }
 
@@ -161,14 +167,14 @@ export default function VideoStreamUniversal({ camId, authToken, children, laten
       cancelled = true
       clearTimeout(timer)
     }
-  }, [preferredStreamFormat])
+  }, [preferredStreamFormat, formatRequest])
 
   // Подписка на изменения доступности WebRTC
   useEffect(() => {
     const unsubscribe = subscribeToWebRTCChanges((available) => {
       debugLog('stream', 'webrtc availability changed', { available })
       webrtcOkRef.current = available
-      if (forcedRef.current) return // принудительный режим — доступность игнорируем
+      if (forcedRef.current) return
 
       // Если изменилась доступность WebRTC, пересматриваем выбор формата
       const browserSupport = checkBrowserSupport()
@@ -183,17 +189,21 @@ export default function VideoStreamUniversal({ camId, authToken, children, laten
       if (selectedFormat?.format === 'webrtc' && !available) {
         debugLog('stream', 'webrtc became unavailable, switching format')
         // Пересчитываем лучший формат
-        const best = selectBestFormat(supportedFormats, effectiveSupport, preferredStreamFormat)
-        if (best && best.format !== 'webrtc') {
-          setSelectedFormat(best)
-          setIsPlaying(false)
-        }
+        const best = selectBestFormat(supportedFormats.filter(f => effectiveSupport[f.format]), effectiveSupport, manualFormatRef.current || preferredStreamFormat)
+        clearTimeout(retryTimerRef.current)
+        retryTimerRef.current = null
+        setReconnectMsg('')
+        setSelectedFormat(best)
+        setIsPlaying(false)
       }
       // Если WebRTC стал доступен и это предпочитаемый формат
-      else if (available && preferredStreamFormat === 'webrtc' && selectedFormat?.format !== 'webrtc') {
+      else if (effectiveSupport.webrtc && (!selectedFormat || (manualFormatRef.current || preferredStreamFormat) === 'webrtc') && selectedFormat?.format !== 'webrtc') {
         debugLog('stream', 'webrtc became available, switching to preferred format')
         const webrtcFormat = supportedFormats.find(f => f.format === 'webrtc' && f.enabled)
         if (webrtcFormat) {
+          clearTimeout(retryTimerRef.current)
+          retryTimerRef.current = null
+          setReconnectMsg('')
           setSelectedFormat(webrtcFormat)
           setIsPlaying(false)
         }
@@ -222,7 +232,6 @@ export default function VideoStreamUniversal({ camId, authToken, children, laten
     if (forcedRef.current) {
       // Принудительный режим: всегда стучимся только в выбранный формат, игнорируя любые условия
       setIsPlaying(false)
-      setShowFormatSelector(false)
       setReconnectMsg(message || 'Ошибка потока')
       cycleRef.current += 1
       retryTimerRef.current = setTimeout(() => {
@@ -247,7 +256,6 @@ export default function VideoStreamUniversal({ camId, authToken, children, laten
     webrtcLog('повтор запланирован', { из: current, в: order[nextIdx], задержка_мс: delay, круг: cycleRef.current })
 
     setIsPlaying(false)
-    setShowFormatSelector(false)
     setReconnectMsg(message || 'Ошибка потока')
     retryTimerRef.current = setTimeout(() => {
       retryTimerRef.current = null
@@ -263,117 +271,40 @@ export default function VideoStreamUniversal({ camId, authToken, children, laten
     setIsPlaying(true)
   }, [])
 
-  const startPress = (format) => {
-    longPressedRef.current = false
-    clearTimeout(pressTimerRef.current)
-    pressTimerRef.current = setTimeout(() => {
-      longPressedRef.current = true
-      const key = format.format
-      const next = forcedRef.current === key ? null : key
-      setForcedFormat(next)
-      forcedRef.current = next
-      if (next) {
-        manualFormatRef.current = next
-        clearTimeout(retryTimerRef.current)
-        retryTimerRef.current = null
-        cycleRef.current = 0
-        setSelectedFormat(makeFormat(formatsRef.current, next))
-        setIsPlaying(false)
-        setAttempt(a => a + 1)
-      }
-      setShowFormatSelector(false)
-    }, 600)
-  }
-  const endPress = () => clearTimeout(pressTimerRef.current)
-
-  const handleFormatChange = (format) => {
-    if (longPressedRef.current) { longPressedRef.current = false; return }
-    setForcedFormat(null)
-    forcedRef.current = null
-    manualFormatRef.current = format.format // ручной выбор — первый в приоритете
+  const changeFormat = (format) => {
+    const nextForced = forceChoice ? format.format : null
+    setForcedFormat(nextForced)
+    forcedRef.current = nextForced
+    manualFormatRef.current = format.format
     clearTimeout(retryTimerRef.current)
     retryTimerRef.current = null
     cycleRef.current = 0
     setSelectedFormat(format)
     setShowFormatSelector(false)
+    formatButtonRef.current?.focus()
     setIsPlaying(false)
+    setReconnectMsg('')
     setAttempt(a => a + 1)
   }
 
-  if (status === 'loading') {
-    return (
-      <div
-        ref={containerRef}
-        style={{
-          position: 'relative',
-          width: '100%',
-          aspectRatio: '16 / 9',
-          background: '#000',
-          borderRadius: 14,
-          overflow: 'hidden',
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'center',
-        }}
-      >
-        <Spinner />
-      </div>
-    )
+  function refreshFormats(autoSelect = false) {
+    if (autoSelect) {
+      manualFormatRef.current = null
+      forcedRef.current = null
+      setForcedFormat(null)
+      setForceChoice(false)
+    }
+    clearTimeout(retryTimerRef.current)
+    retryTimerRef.current = null
+    cycleRef.current = 0
+    setSelectedFormat(null)
+    setIsPlaying(false)
+    setReconnectMsg('')
+    setStatus('loading')
+    setFormatRequest(value => value + 1)
   }
 
-  if (status === 'error') {
-    return (
-      <div
-        ref={containerRef}
-        style={{
-          position: 'relative',
-          width: '100%',
-          aspectRatio: '16 / 9',
-          background: '#000',
-          borderRadius: 14,
-          overflow: 'hidden',
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'center',
-          padding: 16,
-        }}
-      >
-        <div style={{ fontSize: 12, color: 'rgba(255,140,160,0.9)', textAlign: 'center' }}>
-          {errorMessage}
-        </div>
-      </div>
-    )
-  }
-
-  if (!selectedFormat) {
-    debugLog('stream', 'no selected format available')
-    return (
-      <div
-        ref={containerRef}
-        style={{
-          position: 'relative',
-          width: '100%',
-          aspectRatio: '16 / 9',
-          background: '#000',
-          borderRadius: 14,
-          overflow: 'hidden',
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'center',
-        }}
-      >
-        <div style={{ fontSize: 13, color: colors.white[4] }}>Нет доступных форматов</div>
-      </div>
-    )
-  }
-
-  debugLog('stream', 'rendering player', {
-    format: selectedFormat.format,
-    status,
-    isPlaying,
-    camId,
-    hasAuthToken: !!authToken
-  })
+  const enabledFormats = supportedFormats.filter(f => f.enabled)
 
   return (
     <div>
@@ -390,8 +321,18 @@ export default function VideoStreamUniversal({ camId, authToken, children, laten
         overflow: 'hidden',
       }}
     >
+      {!selectedFormat && (
+        <div style={{ position: 'absolute', inset: 0, display: 'grid', placeContent: 'center', justifyItems: 'center', gap: 8, padding: '8px 8px 36px', color: '#eee', textAlign: 'center', fontSize: 12 }}>
+          {status === 'loading' ? <Spinner /> : (
+            <>
+              <div role={status === 'error' ? 'alert' : 'status'}>{status === 'error' ? errorMessage : 'Нет доступных форматов'}</div>
+              <button type="button" style={overlayBtnStyle} onClick={() => refreshFormats()}>Повторить</button>
+            </>
+          )}
+        </div>
+      )}
       {(latencyOverlay || isFullscreen) && <LatencyIndicator setterRef={latencySetterRef} overlay />}
-      {selectedFormat.format === 'webrtc' && (
+      {selectedFormat?.format === 'webrtc' && (
         <>
           {debugLog('stream', 'rendering WebRTCPlayer component')}
           <WebRTCPlayer
@@ -404,7 +345,7 @@ export default function VideoStreamUniversal({ camId, authToken, children, laten
         </>
       )}
 
-      {selectedFormat.format === 'hls' && (
+      {selectedFormat?.format === 'hls' && (
         <>
           {debugLog('stream', 'rendering HLSPlayer component')}
           <HLSPlayer
@@ -418,7 +359,7 @@ export default function VideoStreamUniversal({ camId, authToken, children, laten
         </>
       )}
 
-      {selectedFormat.format === 'fmp4' && (
+      {selectedFormat?.format === 'fmp4' && (
         <>
           {debugLog('stream', 'rendering FMP4Player component')}
           <FMP4Player
@@ -439,65 +380,84 @@ export default function VideoStreamUniversal({ camId, authToken, children, laten
 
       {isPlaying && children && <div style={overlayCardStyle}>{children}</div>}
 
-      {isPlaying && (
-        <div style={{ position: 'absolute', bottom: 10, right: 10, display: 'flex', gap: 8 }}>
-          <button onClick={() => setShowFormatSelector(!showFormatSelector)} style={overlayBtnStyle}>
-            {getFormatDescription(selectedFormat.format)}{forcedFormat ? ' • ПРИНУДИТЕЛЬНО' : ''}
-          </button>
+      {(selectedFormat || enabledFormats.length > 0) && (
+        <div style={{ position: 'absolute', bottom: 10, right: 10, display: 'flex', gap: 8, zIndex: 51 }}>
           <button
-            onClick={toggleFullscreen}
+            type="button"
+            ref={formatButtonRef}
+            onClick={() => {
+              if (!showFormatSelector) setForceChoice(Boolean(forcedFormat))
+              setShowFormatSelector(value => !value)
+            }}
             style={overlayBtnStyle}
-            title={isFullscreen ? 'Выйти из полного экрана' : 'Во весь экран'}
-            aria-label={isFullscreen ? 'Выйти из полного экрана' : 'Во весь экран'}
+            aria-expanded={showFormatSelector}
           >
-            {isFullscreen ? '⤡ Свернуть' : '⤢ Во весь экран'}
+            {selectedFormat ? getFormatDescription(selectedFormat.format) : 'Выбрать формат'}{forcedFormat ? ' • зафиксирован' : ''}
           </button>
+          {isPlaying && (
+            <button
+              type="button"
+              onClick={toggleFullscreen}
+              style={overlayBtnStyle}
+              aria-label={isFullscreen ? 'Выйти из полного экрана' : 'Во весь экран'}
+            >
+              {isFullscreen ? '⤡ Свернуть' : '⤢ Во весь экран'}
+            </button>
+          )}
         </div>
       )}
 
       {showFormatSelector && (
         <div
+          onKeyDown={(event) => {
+            if (event.key !== 'Escape') return
+            event.stopPropagation()
+            setShowFormatSelector(false)
+            formatButtonRef.current?.focus()
+          }}
           style={{
             position: 'absolute',
-            bottom: 50,
+            bottom: 46,
             right: 10,
-            background: 'rgba(0,0,0,0.9)',
+            zIndex: 52,
+            background: 'rgba(0,0,0,0.94)',
             border: '1px solid rgba(255,255,255,0.15)',
             borderRadius: 12,
             padding: 12,
-            minWidth: 200,
+            width: 'min(240px, calc(100% - 20px))',
+            maxHeight: 'calc(100% - 50px)',
+            overflowY: 'auto',
+            color: '#eee',
           }}
         >
-          <div style={{ fontSize: 11, color: colors.white[3], marginBottom: 8 }}>
-            Выбор формата: <span style={{ opacity: 0.6 }}>(удерживайте — принудительно)</span>
-          </div>
-          {supportedFormats.filter(f => f.enabled).map((format) => (
+          <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12, marginBottom: 8 }}>
+            <input type="checkbox" checked={forceChoice} onChange={event => setForceChoice(event.target.checked)} />
+            Использовать только выбранный формат
+          </label>
+          {enabledFormats.map(format => (
             <button
+              type="button"
               key={format.format}
-              onClick={() => handleFormatChange(format)}
-              onPointerDown={() => startPress(format)}
-              onPointerUp={endPress}
-              onPointerLeave={endPress}
-              onPointerCancel={endPress}
-              onContextMenu={(e) => e.preventDefault()}
+              aria-pressed={selectedFormat?.format === format.format}
+              onClick={() => changeFormat(format)}
               style={{
                 ...overlayBtnStyle,
                 width: '100%',
                 marginBottom: 6,
-                background: selectedFormat.format === format.format ? 'rgba(99, 102, 241, 0.3)' : 'rgba(255,255,255,0.05)',
+                textAlign: 'start',
+                background: selectedFormat?.format === format.format ? 'rgba(99, 102, 241, 0.3)' : 'rgba(255,255,255,0.05)',
               }}
             >
-              <div style={{ textAlign: 'left' }}>
-                <div style={{ fontWeight: 600 }}>
-                  {format.name}
-                  {forcedFormat === format.format && (
-                    <span style={{ marginLeft: 6, fontSize: 9, color: '#ffb454' }}>ПРИНУДИТЕЛЬНО</span>
-                  )}
-                </div>
-                <div style={{ fontSize: 10, opacity: 0.7 }}>{format.latency}</div>
-              </div>
+              <span style={{ fontWeight: 600 }}>{format.name || FORMAT_NAMES[format.format]}</span>
+              {forcedFormat === format.format && <span style={{ marginLeft: 6, color: '#ffb454' }}>Зафиксирован</span>}
+              {format.latency && <span style={{ display: 'block', opacity: 0.7 }}>{format.latency}</span>}
             </button>
           ))}
+          <button type="button" style={overlayBtnStyle} onClick={() => {
+            setShowFormatSelector(false)
+            formatButtonRef.current?.focus()
+            refreshFormats(true)
+          }}>Автовыбор</button>
         </div>
       )}
     </div>

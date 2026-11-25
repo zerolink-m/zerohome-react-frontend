@@ -4,10 +4,12 @@
 //   steps       — массив подписей
 //   active      — индекс активного этапа; >= steps.length — все завершены
 //   failedIndex — индекс упавшего этапа (красный, без вращения) или null
-export default function StageProgress({ steps, active, failedIndex = null }) {
+export default function StageProgress({ steps, active, failedIndex = null, label = 'Ход загрузки' }) {
   const failed = failedIndex != null
+  const stage = Math.max(0, Math.min(active, steps.length))
+  const stageText = failed ? `Ошибка на этапе: ${steps[failedIndex] || 'получение данных'}` : steps[stage] || 'Завершено'
   return (
-    <div className="sp-track" role="progressbar" aria-valuemin={0} aria-valuemax={steps.length} aria-valuenow={Math.min(active, steps.length)}>
+    <div className="sp-track" role="progressbar" aria-label={label} aria-valuemin={0} aria-valuemax={steps.length} aria-valuenow={stage} aria-valuetext={stageText}>
       {steps.map((label, i) => {
         const isFailed = failed && i === failedIndex
         const isDone = !failed ? i < active : i < failedIndex

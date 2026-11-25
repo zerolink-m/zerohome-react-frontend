@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { useNavigate } from 'react-router'
 import { createCam } from '../api/cams'
 import { useToast } from '../context/ToastContext'
 import DashCard from '../components/DashCard'

@@ -8,11 +8,12 @@ import { colors } from '../styles/tokens'
 // viewport вверх. Мы снимаем scrollY на момент клика, а затем в течение
 // небольшого окна (~600мс, несколько кадров) восстанавливаем позицию — пока
 // новый контент не отрисуется, clamp'ясь по фактической высоте документа.
-export default function Pagination({ offset, limit, total, onChange }) {
+export default function Pagination({ offset, limit, total, onChange, maxLimit = 255 }) {
   const page = Math.floor(offset / limit) + 1
   const pageCount = Math.max(1, Math.ceil(total / limit))
   const canPrev = offset > 0
   const canNext = offset + limit < total
+  const limits = [...new Set([10, 25, 50, 100, maxLimit, limit])].filter((n) => n <= maxLimit).sort((a, b) => a - b)
 
   const [restoreToken, setRestoreToken] = useState(null) // { targetY, deadline }
 
@@ -50,6 +51,7 @@ export default function Pagination({ offset, limit, total, onChange }) {
         вперёд →
       </Button>
       <select
+        aria-label="Количество строк на странице"
         value={limit}
         onChange={(e) => requestChange({ offset: 0, limit: Number(e.target.value) })}
         style={{
@@ -62,7 +64,7 @@ export default function Pagination({ offset, limit, total, onChange }) {
           fontFamily: "'JetBrains Mono', monospace",
         }}
       >
-        {[10, 25, 50, 100, 255].map((n) => (
+        {limits.map((n) => (
           <option key={n} value={n} style={{ background: 'var(--bg)' }}>
             {n} / стр.
           </option>

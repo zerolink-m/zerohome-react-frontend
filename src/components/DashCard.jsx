@@ -1,8 +1,8 @@
 import T from '../styles/tokens'
 
-export default function DashCard({ children, style, ...rest }) {
+export default function DashCard({ children, style, className = '', ...rest }) {
   return (
-    <div style={{ ...T.dashCard, ...style }} {...rest}>
+    <div className={`dash-card ${className}`.trim()} style={{ ...T.dashCard, ...style }} {...rest}>
       {children}
     </div>
   )

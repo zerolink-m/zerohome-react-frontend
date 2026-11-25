@@ -32,9 +32,9 @@ export default function PillGroup({ items }) {
       {items.map((item, i) => {
         const w = widths[i]
         return (
-          <Pill key={item.key ?? i} variant={item.variant} style={w?.width ? { width: w.width } : undefined}>
+          <Pill key={item.key ?? i} variant={item.variant} className={w?.marquee ? 'pill-overflow' : undefined} style={w?.width ? { width: w.width } : undefined}>
             <span
-              ref={(el) => (innerRefs.current[i] = el)}
+              ref={(el) => { innerRefs.current[i] = el }}
               className={w?.marquee ? 'pill-marquee' : undefined}
               style={{
                 display: 'inline-block',

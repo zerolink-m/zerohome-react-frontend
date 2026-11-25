@@ -30,7 +30,8 @@ export default function SharesManager({ deviceId, deviceType, refreshKey = 0 }) 
   const [total, setTotal] = useState(0)
   const [filter, setFilter] = useState({ offset: 0, limit: DEFAULT_LIMIT })
   const [loading, setLoading] = useState(true)
-  const gate = useLoadGate(loading)
+  const [loadError, setLoadError] = useState(null)
+  const gate = useLoadGate(loading, loadError)
   const [removeTarget, setRemoveTarget] = useState(null)
   const [removing, setRemoving] = useState(false)
   const [reloadTick, setReloadTick] = useState(0)
@@ -39,17 +40,24 @@ export default function SharesManager({ deviceId, deviceType, refreshKey = 0 }) 
     let cancelled = false
     async function load() {
       setLoading(true)
+      setLoadError(null)
       try {
-        // API не поддерживает фильтрацию по device_type/device_id, делаем на клиенте
-        const data = await listShares(filter)
+        const data = await listShares({
+          ...filter,
+          search_column: ['device_type', 'device_id'],
+          search_method: ['equals', 'equals'],
+          search: [deviceType, deviceId],
+        })
         if (cancelled) return
-        const filtered = (data.items || []).filter(
-          share => share.device_type === deviceType && share.device_id === deviceId
-        )
-        setItems(filtered)
-        setTotal(filtered.length)
+        if (filter.offset > 0 && filter.offset >= data.total) {
+          const offset = Math.floor(Math.max(0, data.total - 1) / filter.limit) * filter.limit
+          setFilter({ ...filter, offset })
+          return
+        }
+        setItems(data.items)
+        setTotal(data.total)
       } catch (e) {
-        if (!cancelled) toast.error(describeApiError(e))
+        if (!cancelled) setLoadError(describeApiError(e))
       } finally {
         if (!cancelled) setLoading(false)
       }
@@ -58,7 +66,6 @@ export default function SharesManager({ deviceId, deviceType, refreshKey = 0 }) 
     return () => {
       cancelled = true
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [deviceId, deviceType, filter, refreshKey, reloadTick])
 
   async function handleRemove(shareId) {
@@ -78,7 +85,7 @@ export default function SharesManager({ deviceId, deviceType, refreshKey = 0 }) 
   return (
     <div>
       {gate.busy ? (
-        <PageLoader gate={gate} compact />
+        <PageLoader gate={gate} compact onRetry={() => setReloadTick((v) => v + 1)} />
       ) : items.length === 0 ? (
         <div style={{ fontSize: 12, color: colors.white[3] }}>Нет активных ссылок</div>
       ) : (
@@ -121,7 +128,7 @@ export default function SharesManager({ deviceId, deviceType, refreshKey = 0 }) 
         </div>
       )}
 
-      {total > filter.limit && (
+      {!gate.busy && (total > filter.limit || filter.offset > 0) && (
         <Pagination
           offset={filter.offset}
           limit={filter.limit}

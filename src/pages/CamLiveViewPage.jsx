@@ -1,7 +1,8 @@
 import { useEffect, useState } from 'react'
-import { useNavigate, useParams } from 'react-router-dom'
+import { useNavigate, useParams } from 'react-router'
 import { getCam } from '../api/cams'
 import { useToast } from '../context/ToastContext'
+import { useAuth } from '../context/AuthContext'
 import Button from '../components/Button'
 import DashCard from '../components/DashCard'
 import VideoStreamUniversal from '../components/cams/VideoStreamUniversal'
@@ -17,6 +18,7 @@ export default function CamLiveViewPage() {
   const toast = useToast()
   const navigate = useNavigate()
   const isMobile = useIsMobile()
+  const { uid, role } = useAuth()
 
   const [cam, setCam] = useState(null)
   const [loading, setLoading] = useState(true)
@@ -26,12 +28,15 @@ export default function CamLiveViewPage() {
 
   useEffect(() => {
     let cancelled = false
+    setSharing(false)
+    setPtzUnsupported(false)
     async function load() {
       setLoading(true)
       try {
         const data = await getCam(id)
         if (!cancelled) setCam(data)
       } catch (e) {
+        if (cancelled) return
         toast.error(e.message)
         navigate('/')
       } finally {
@@ -46,7 +51,8 @@ export default function CamLiveViewPage() {
   }, [id])
 
   if (gate.busy) return <PageLoader gate={gate} />
-  if (!cam) return null
+  if (!cam || String(cam.id) !== String(id)) return null
+  const canShare = role === 'admin' || (uid != null && String(cam.owner) === String(uid))
 
   return (
     <div>
@@ -64,7 +70,7 @@ export default function CamLiveViewPage() {
           {cam.name || `${cam.address}:${cam.port}${cam.path || ''}`}
         </h1>
         <div style={{ display: 'flex', gap: 12 }}>
-          <Button onClick={() => setSharing(true)}>Поделиться</Button>
+          {canShare && <Button onClick={() => setSharing(true)}>Поделиться</Button>}
           <Button onClick={() => navigate(`/cams/${cam.id}`)}>← к камере</Button>
         </div>
       </div>
@@ -80,7 +86,7 @@ export default function CamLiveViewPage() {
         )}
       </div>
 
-      <ShareLinkDialog open={sharing} camId={cam.id} deviceType="cams" type="stream" onClose={() => setSharing(false)} />
+      {canShare && <ShareLinkDialog open={sharing} camId={cam.id} deviceType="cams" type="stream" onClose={() => setSharing(false)} />}
     </div>
   )
 }

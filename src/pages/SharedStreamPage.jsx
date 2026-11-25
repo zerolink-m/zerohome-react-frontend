@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { useParams, useSearchParams } from 'react-router-dom'
+import { useParams, useSearchParams } from 'react-router'
 import VideoStreamUniversal from '../components/cams/VideoStreamUniversal'
 import PTZControl from '../components/cams/PTZControl'
 import DashCard from '../components/DashCard'

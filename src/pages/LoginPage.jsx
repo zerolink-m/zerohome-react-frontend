@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { Link, useLocation, useNavigate } from 'react-router-dom'
+import { Link, useLocation, useNavigate, useOutletContext } from 'react-router'
 import { useAuth } from '../context/AuthContext'
 import GlassCard from '../components/GlassCard'
 import InputField from '../components/InputField'
@@ -13,6 +13,7 @@ export default function LoginPage() {
   const { login } = useAuth()
   const navigate = useNavigate()
   const location = useLocation()
+  const setAuthenticating = useOutletContext()
 
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
@@ -23,15 +24,18 @@ export default function LoginPage() {
     e.preventDefault()
     setError('')
     setLoading(true)
+    setAuthenticating?.(true)
     try {
       const me = await login(email, password)
-      const returnTo = location.state?.from?.pathname || '/'
+      const from = location.state?.from
+      const returnTo = from?.pathname ? `${from.pathname}${from.search || ''}${from.hash || ''}` : '/'
       if (me?.id != null && isSetupComplete(me.id)) navigate(returnTo, { replace: true })
       else navigate('/setup', { replace: true, state: { afterLogin: true, returnTo } })
     } catch (e) {
       setError(e.message)
     } finally {
       setLoading(false)
+      setAuthenticating?.(false)
     }
   }
 
@@ -48,6 +52,7 @@ export default function LoginPage() {
       }}
     >
       <GlassCard>
+        <h1 className="sr-only">Вход</h1>
         <div style={{ textAlign: 'center', marginBottom: 32, color: 'var(--accent)', overflow: 'hidden' }}>
           <LogoFull height={40} style={{ maxWidth: '100%', height: 'auto' }} />
         </div>
@@ -66,14 +71,14 @@ export default function LoginPage() {
             onChange={(e) => setPassword(e.target.value)}
             autoComplete="current-password"
           />
-          {error && <div style={{ ...T.errorBox, marginBottom: 20 }}>{error}</div>}
+          {error && <div role="alert" style={{ ...T.errorBox, marginBottom: 20 }}>{error}</div>}
           <Button variant="accent" type="submit" loading={loading} style={{ width: '100%' }}>
             Войти
           </Button>
         </form>
         <Divider />
-        <div style={{ textAlign: 'center', fontSize: 12, color: 'rgba(255,255,255,0.4)' }}>
-          Нет аккаунта? <Link to="/register" style={{ color: '#9ddcff' }}>Зарегистрироваться</Link>
+        <div style={{ textAlign: 'center', fontSize: '0.75rem', color: 'var(--muted-text)' }}>
+          Нет аккаунта? <Link to="/register" className="text-link">Зарегистрироваться</Link>
         </div>
       </GlassCard>
     </div>

@@ -8,7 +8,7 @@ export function createInvitation({ device_type, device_id, email }) {
 }
 
 // GET /v1/invitations — список: отправленные + полученные по email (admin — все).
-// Общая пагинация/поиск; фильтра по device_type/device_id в API нет.
+// Условия по device_type/device_id передаются через общий list-query.
 export function listInvitations(filter = { limit: LIMIT_MAX }) {
   return request(`/invitations${buildQuery(filter)}`).then(data => normalizeList(data, 'invitations'))
 }

@@ -128,7 +128,7 @@ export function saveProfileSnapshot(uid, profile) {
   if (uid == null || !profile) return
   try {
     const key = `${PREFIX}${uid}:profile`
-    localStorage.setItem(key, JSON.stringify(sanitize(profile)))
+    localStorage.setItem(key, JSON.stringify(sanitizeSnapshot(profile)))
     stamp(key)
     snapshotUpdated(key, 'профиль')
   } catch {

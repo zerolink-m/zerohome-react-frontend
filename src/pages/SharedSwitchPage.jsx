@@ -1,4 +1,4 @@
-import { useParams, useSearchParams } from 'react-router-dom'
+import { useParams, useSearchParams } from 'react-router'
 import StateToggle from '../components/switches/StateToggle'
 import DashCard from '../components/DashCard'
 import { colors } from '../styles/tokens'

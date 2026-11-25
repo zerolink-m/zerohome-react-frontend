@@ -32,7 +32,8 @@ async function stageHtml(html) {
   const visited = new Set()
   try {
     async function visit(text, base) {
-      const re = /["'(]\s*(\/assets\/[^"'()\s]+|(?:\.\.?\/)[^"'()\s]+\.(?:js|css|woff2?|png|svg|jpg|webp|ico))\s*["')]/g
+      // Rolldown может записывать пути к чанкам в обратных кавычках.
+      const re = /["'(`]\s*(\/assets\/[^"'()`{}\s]+|(?:\.\.?\/)[^"'()`{}\s]+\.(?:js|css|woff2?|png|svg|jpg|webp|ico))\s*["')`]/g
       for (const match of text.matchAll(re)) {
         const url = new URL(match[1], base)
         if (!allowed(url) || visited.has(url.href)) continue

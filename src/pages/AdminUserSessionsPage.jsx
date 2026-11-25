@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { useNavigate, useParams } from 'react-router-dom'
+import { useNavigate, useParams } from 'react-router'
 import { getUser } from '../api/users'
 import { useAuth } from '../context/AuthContext'
 import { listSessions, deleteSession } from '../api/sessions'

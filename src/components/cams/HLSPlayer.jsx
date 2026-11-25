@@ -206,6 +206,7 @@ export default function HLSPlayer({ camId, authToken, onError, onPlaying, onLate
       let Hls
       try {
         const hlsModule = await import('hls.js')
+        if (cancelled) return
         Hls = hlsModule.default
         debugLog('hls', 'hls.js loaded successfully', { isSupported: Hls.isSupported() })
       } catch (e) {

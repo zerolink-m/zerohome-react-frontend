@@ -22,7 +22,7 @@ const OBJECT_TYPE_LABEL = {
   car: 'Машина'
 }
 
-export default function MotionEventsList({ camId }) {
+export default function MotionEventsList({ camId, canDelete }) {
   const [events, setEvents] = useState([])
   const [total, setTotal] = useState(0)
   const [offset, setOffset] = useState(0)
@@ -58,6 +58,7 @@ export default function MotionEventsList({ camId }) {
   }
 
   async function handleDelete(eventId) {
+    if (!canDelete) return
     try {
       await deleteMotionEvent(eventId)
       toast.success('Событие удалено')
@@ -90,6 +91,7 @@ export default function MotionEventsList({ camId }) {
         <h3>События детекции движения</h3>
         <div className="motion-events-filters">
           <select
+            aria-label="Тип события движения"
             value={objectTypeFilter || ''}
             onChange={(e) => {
               setObjectTypeFilter(e.target.value || null)
@@ -135,11 +137,11 @@ export default function MotionEventsList({ camId }) {
                     </div>
                   )}
                 </div>
-                <div className="motion-event-actions">
+                {canDelete && <div className="motion-event-actions">
                   <Button onClick={() => setDeleteId(event.id)}>
                     Удалить
                   </Button>
-                </div>
+                </div>}
               </div>
             ))}
           </div>
@@ -148,6 +150,7 @@ export default function MotionEventsList({ camId }) {
             total={total}
             offset={offset}
             limit={limit}
+            maxLimit={200}
             onChange={(patch) => {
               if (patch.limit != null) setLimit(patch.limit)
               if (patch.offset != null) setOffset(patch.offset)
@@ -157,7 +160,7 @@ export default function MotionEventsList({ camId }) {
       )}
 
       <ConfirmDialog
-        open={deleteId != null}
+        open={canDelete && deleteId != null}
         title="Удалить событие?"
         message="Событие и его фото будут удалены без возможности восстановления."
         onConfirm={() => handleDelete(deleteId)}

@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { Link } from 'react-router'
 import DashCard from '../DashCard'
 import { setSwitchState } from '../../api/switches'
 import { ApiError } from '../../api/client'
@@ -43,6 +43,10 @@ function ToggleButton({ state, label, onToggle, sending, large }) {
   return (
     <button
       type="button"
+      className="card-action"
+      role="switch"
+      aria-checked={isOn}
+      aria-label={label}
       disabled={sending}
       onClick={(e) => {
         e.stopPropagation()
@@ -82,7 +86,6 @@ function ToggleButton({ state, label, onToggle, sending, large }) {
 }
 
 export default function SwitchCard({ switchItem }) {
-  const navigate = useNavigate()
   const toast = useToast()
   const [hover, setHover] = useState(false)
   const [state, setState] = useState(switchItem.state ? 1 : 0)
@@ -111,7 +114,6 @@ export default function SwitchCard({ switchItem }) {
 
   return (
     <DashCard
-      onClick={() => navigate(`/switches/${switchItem.id}`, { state: { preview: sanitizeSnapshot(switchItem), uid: getState().uid } })}
       onMouseEnter={() => setHover(true)}
       onMouseLeave={() => setHover(false)}
       style={{
@@ -121,6 +123,7 @@ export default function SwitchCard({ switchItem }) {
         transition: '0.25s ease',
       }}
     >
+      <Link className="card-open-link" to={`/switches/${switchItem.id}`} state={{ preview: sanitizeSnapshot(switchItem), uid: getState().uid }} aria-label={`Открыть выключатель: ${switchItem.name || switchItem.id}`} />
       <div
         style={{
           position: 'absolute',

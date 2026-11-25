@@ -34,7 +34,7 @@ export default function PageLoader({ gate, loading = true, error: errorProp = nu
         <StageProgress steps={STEPS} active={error ? failedIndex : shown} failedIndex={failedIndex} />
         {error && (
           <div style={{ textAlign: 'center', marginTop: 20 }}>
-            <div style={{ fontSize: 13, color: colors.statuses.red.text, marginBottom: 14, overflowWrap: 'anywhere' }}>
+            <div role="alert" style={{ fontSize: '0.8125rem', color: colors.statuses.red.text, marginBottom: 14, overflowWrap: 'anywhere' }}>
               {error}
             </div>
             {onRetry && (

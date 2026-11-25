@@ -397,7 +397,7 @@ export default function WebRTCPlayer({ camId, authToken, onError, onPlaying }) {
           debugLog('webrtc', 'websocket closed', { code: event.code })
           if (event.code === 1008) {
             fail('Ошибка авторизации или WebRTC отключен')
-          } else if (status !== 'playing' && status !== 'error') {
+          } else if (!(trackReceived && connectionEstablished)) {
             fail('Соединение закрыто')
           }
         }

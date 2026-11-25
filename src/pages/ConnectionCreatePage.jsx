@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { useNavigate } from 'react-router'
 import { createConnection, TUYA_ENDPOINTS } from '../api/connections'
 import { describeApiError } from '../api/client'
 import { useToast } from '../context/ToastContext'

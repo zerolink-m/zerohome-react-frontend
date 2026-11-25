@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { Link } from 'react-router'
 import T from '../styles/tokens'
 
 export default function Button({
@@ -10,6 +11,7 @@ export default function Button({
   style,
   onClick,
   type = 'button',
+  to,
   ...rest
 }) {
   const [hover, setHover] = useState(false)
@@ -25,11 +27,21 @@ export default function Button({
     ...style,
   }
 
+  if (to != null && !isDisabled) {
+    return (
+      <Link to={to} style={base} onClick={onClick} onMouseEnter={() => setHover(true)} onMouseLeave={() => setHover(false)} {...rest}>
+        {children}
+      </Link>
+    )
+  }
+
   return (
     <button
       type={type}
       style={base}
       disabled={isDisabled}
+      aria-busy={loading || undefined}
+      aria-label={loading && typeof children === 'string' ? children : undefined}
       onClick={onClick}
       onMouseEnter={() => setHover(true)}
       onMouseLeave={() => setHover(false)}

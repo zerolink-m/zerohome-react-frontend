@@ -9,10 +9,13 @@ import { colors } from '../../styles/tokens'
 import { useLoadGate } from '../../hooks/useLoadGate'
 import PageLoader from '../PageLoader'
 
-export default function RecordingSettings({ camId }) {
+export default function RecordingSettings({ camId, onSaved }) {
   const toast = useToast()
   const [loading, setLoading] = useState(true)
-  const gate = useLoadGate(loading)
+  const [loadError, setLoadError] = useState(null)
+  const [retry, setRetry] = useState(0)
+  const [loadedCam, setLoadedCam] = useState(null)
+  const gate = useLoadGate(loading || (!loadError && loadedCam !== camId), loadError)
   const [saving, setSaving] = useState(false)
   const [record, setRecord] = useState(0)
   const [recordType, setRecordType] = useState('')
@@ -23,14 +26,16 @@ export default function RecordingSettings({ camId }) {
     let cancelled = false
     async function load() {
       setLoading(true)
+      setLoadError(null)
       try {
         const data = await getRecordingSettings(camId)
         if (cancelled) return
         setRecord(data.record ? 1 : 0)
         setRecordType(data.record_type || '')
         setLocalPath(data.record_metadata?.local?.path || '')
+        setLoadedCam(camId)
       } catch (e) {
-        if (!cancelled) toast.error(e.message)
+        if (!cancelled) setLoadError(e.message || 'Не удалось загрузить настройки записи')
       } finally {
         if (!cancelled) setLoading(false)
       }
@@ -40,9 +45,10 @@ export default function RecordingSettings({ camId }) {
       cancelled = true
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [camId])
+  }, [camId, retry])
 
   async function handleSave() {
+    if (gate.busy || loadedCam !== camId || saving) return
     setSaving(true)
     try {
       const body = {
@@ -54,6 +60,7 @@ export default function RecordingSettings({ camId }) {
       setRecord(data.record ? 1 : 0)
       setRecordType(data.record_type || '')
       setLocalPath(data.record_metadata?.local?.path || '')
+      onSaved?.(data)
       toast.success('Настройки записи обновлены')
     } catch (e) {
       toast.error(e.message)
@@ -62,7 +69,7 @@ export default function RecordingSettings({ camId }) {
     }
   }
 
-  if (gate.busy) return <PageLoader gate={gate} compact />
+  if (gate.busy) return <PageLoader gate={gate} compact onRetry={() => setRetry(value => value + 1)} />
 
   return (
     <div>

@@ -1,5 +1,5 @@
-import { useEffect, useState } from 'react'
-import { Link, useNavigate } from 'react-router-dom'
+import { useEffect, useId, useState } from 'react'
+import { useNavigate } from 'react-router'
 import { useAuth } from '../context/AuthContext'
 import { useToast } from '../context/ToastContext'
 import { useTheme } from '../context/ThemeContext'
@@ -24,6 +24,8 @@ import PageLoader from '../components/PageLoader'
 
 export default function AccountPage() {
   const { profile, role, refreshProfile, uid, sid, logout } = useAuth()
+  const settingsId = useId()
+  const invitationEmail = profile?.email?.trim() || ''
   const navigate = useNavigate()
   const [confirmLogout, setConfirmLogout] = useState(false)
   const [loggingOut, setLoggingOut] = useState(false)
@@ -57,6 +59,8 @@ export default function AccountPage() {
   const [invitationsOpen, setInvitationsOpen] = useState(false)
   const [declineTarget, setDeclineTarget] = useState(null)
   const [decliding, setDeciding] = useState(false)
+  const [invitationRevision, setInvitationRevision] = useState(0)
+  const isRecipient = (inv) => Boolean(invitationEmail && inv?.email?.trim().toLowerCase() === invitationEmail.toLowerCase())
 
   const [pushEnabled, setPushEnabled] = useState(false)
   const [pushMeta, setPushMeta] = useState({ bot_token: '', telegram_id: '' })
@@ -67,25 +71,16 @@ export default function AccountPage() {
     if (profile) setPushEnabled(profile.push === 'telegram')
   }, [profile])
 
-  async function loadInvitations({ silent } = {}) {
-    if (!silent) setLoadingInvitations(true)
-    try {
-      const data = await listInvitations(invFilter)
-      setInvitations({ items: data.items || [], total: data.total ?? 0 })
-    } catch (e) {
-      toast.error(describeApiError(e))
-    } finally {
-      if (!silent) setLoadingInvitations(false)
-    }
-  }
-
   useEffect(() => {
-    if (!invitationsOpen) return
+    if (!invitationsOpen || !invitationEmail) {
+      setLoadingInvitations(false)
+      return
+    }
     let cancelled = false
     async function load() {
       setLoadingInvitations(true)
       try {
-        const data = await listInvitations(invFilter)
+        const data = await listInvitations({ ...invFilter, search: invitationEmail, search_column: 'email', search_method: 'equals' })
         if (!cancelled)
           setInvitations({ items: data.items || [], total: data.total ?? (data.items || []).length })
       } catch (e) {
@@ -99,11 +94,13 @@ export default function AccountPage() {
       cancelled = true
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [invFilter, invitationsOpen])
+  }, [invFilter, invitationsOpen, invitationEmail, invitationRevision])
 
   // POST /v1/invitations/{id}/accept — принимает адресат (или admin).
   // POST /v1/invitations/{id}/decline — отклонение, приглашение удаляется.
-  async function handleAccept(id) {
+  async function handleAccept(invitation) {
+    if (!isRecipient(invitation)) return
+    const { id } = invitation
     try {
       await acceptInvitation(id)
       setInvitations((prev) => ({
@@ -118,12 +115,16 @@ export default function AccountPage() {
     }
   }
 
-  async function handleDecline(id) {
+  async function handleDecline(invitation) {
+    if (!isRecipient(invitation)) return
     setDeciding(true)
     try {
-      await declineInvitation(id)
+      await declineInvitation(invitation.id)
       toast.success('Приглашение отклонено')
-      await loadInvitations({ silent: true })
+      if (invFilter.offset > 0 && invitations.items.length === 1) {
+        setInvFilter((current) => current === invFilter ? { ...current, offset: Math.max(0, current.offset - current.limit) } : current)
+      }
+      setInvitationRevision((current) => current + 1)
     } catch (e) {
       toast.error(describeApiError(e))
     } finally {
@@ -260,8 +261,8 @@ export default function AccountPage() {
 
       {role === 'admin' && (
         <div>
-          <Link to="/admin">
             <Button
+              to="/admin"
               style={{
                 background: 'var(--accent-orange-bg)',
                 border: '1px solid var(--accent-orange-border)',
@@ -270,7 +271,6 @@ export default function AccountPage() {
             >
               Админ-панель
             </Button>
-          </Link>
         </div>
       )}
 
@@ -321,16 +321,18 @@ export default function AccountPage() {
 
       <CollapsibleSection
         title="Приглашения"
-        count={invitationsOpen ? invitations.total : undefined}
+        count={invitationsOpen && invitationEmail ? invitations.total : undefined}
         onOpen={() => setInvitationsOpen(true)}
       >
-        {gate2.busy ? (
+        {!invitationEmail ? (
+          <div style={{ fontSize: '0.8125rem', color: 'var(--muted-text)' }}>Приглашения появятся после загрузки профиля.</div>
+        ) : gate2.busy ? (
           <PageLoader gate={gate2} compact />
-        ) : invitations.items.length === 0 ? (
+        ) : !invitations.items.some(isRecipient) ? (
           <div style={{ fontSize: 13, color: colors.white[4] }}>Нет входящих приглашений</div>
         ) : (
           <div style={{ display: 'grid', gap: 12 }}>
-            {invitations.items.map((inv) => (
+            {invitations.items.filter(isRecipient).map((inv) => (
               <DashCard key={inv.id} style={{ padding: 16 }}>
                 <div
                   style={{
@@ -360,7 +362,7 @@ export default function AccountPage() {
                   </div>
                   <div style={{ display: 'flex', gap: 8 }}>
                     {inv.status === 'pending' && (
-                      <Button small onClick={() => handleAccept(inv.id)}>
+                      <Button small onClick={() => handleAccept(inv)}>
                         Принять
                       </Button>
                     )}
@@ -373,12 +375,12 @@ export default function AccountPage() {
             ))}
           </div>
         )}
-        <Pagination
+        {invitationEmail && <Pagination
           offset={invFilter.offset}
           limit={invFilter.limit}
           total={invitations.total}
           onChange={(patch) => setInvFilter((f) => ({ ...f, ...patch }))}
-        />
+        />}
       </CollapsibleSection>
 
       <div>
@@ -386,6 +388,7 @@ export default function AccountPage() {
         <DashCard>
           <div style={{ marginBottom: 16 }}>
             <Toggle
+              aria-label="Push-уведомления"
               checked={pushEnabled}
               onChange={(v) => {
                 if (v) {
@@ -424,10 +427,9 @@ export default function AccountPage() {
         <h2 style={{ fontSize: 16, marginBottom: 16 }}>Производительность</h2>
         <DashCard>
           <div style={{ marginBottom: 12 }}>
-            <label style={{ fontSize: 13, color: colors.white[4], display: 'block', marginBottom: 8 }}>
-              Режим облегченный
-            </label>
+            <div style={{ fontSize: '0.8125rem', color: 'var(--muted-text)', marginBottom: 8 }}>Облегчённый режим</div>
             <Toggle
+              aria-label="Облегчённый режим"
               checked={performanceMode}
               onChange={(v) => setPerformanceMode(v)}
             />
@@ -436,10 +438,9 @@ export default function AccountPage() {
             </div>
           </div>
           <div style={{ marginBottom: 12 }}>
-            <label style={{ fontSize: 13, color: colors.white[4], display: 'block', marginBottom: 8 }}>
-              Оптимизация увелечения
-            </label>
+            <div style={{ fontSize: '0.8125rem', color: 'var(--muted-text)', marginBottom: 8 }}>Оптимизация увеличения</div>
             <Toggle
+              aria-label="Оптимизация увеличения"
               checked={zoomOptimization}
               onChange={(v) => setZoomOptimization(v)}
             />
@@ -448,24 +449,27 @@ export default function AccountPage() {
             </div>
           </div>
           <div>
-            <label style={{ fontSize: 13, color: colors.white[4], display: 'block', marginBottom: 12 }}>
+            <div id={`${settingsId}-protocol`} style={{ fontSize: '0.8125rem', color: 'var(--muted-text)', marginBottom: 12 }}>
               Предпочитаемый протокол потоковой передачи
-            </label>
-            <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap', alignItems: 'center' }}>
+            </div>
+            <div role="group" aria-labelledby={`${settingsId}-protocol`} style={{ display: 'flex', gap: 12, flexWrap: 'wrap', alignItems: 'center' }}>
               <Button
                 variant={preferredStreamFormat === 'webrtc' ? 'accent' : 'default'}
+                aria-pressed={preferredStreamFormat === 'webrtc'}
                 onClick={() => setPreferredStreamFormat('webrtc')}
               >
                 WebRTC
               </Button>
               <Button
                 variant={preferredStreamFormat === 'hls' ? 'accent' : 'default'}
+                aria-pressed={preferredStreamFormat === 'hls'}
                 onClick={() => setPreferredStreamFormat('hls')}
               >
                 HLS
               </Button>
               <Button
                 variant={preferredStreamFormat === 'fmp4' ? 'accent' : 'default'}
+                aria-pressed={preferredStreamFormat === 'fmp4'}
                 onClick={() => setPreferredStreamFormat('fmp4')}
               >
                 fMP4
@@ -482,20 +486,20 @@ export default function AccountPage() {
         <h2 style={{ fontSize: 16, marginBottom: 16 }}>Оформление</h2>
         <DashCard>
           <div style={{ marginBottom: 20 }}>
-            <label style={{ fontSize: 13, color: colors.white[4], display: 'block', marginBottom: 12 }}>
+            <div id={`${settingsId}-theme`} style={{ fontSize: '0.8125rem', color: 'var(--muted-text)', marginBottom: 12 }}>
               Режим темы
-            </label>
-            <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap', alignItems: 'center' }}>
-              <Button variant={themeMode === 'light' ? 'accent' : 'default'} onClick={() => setThemeMode('light')}>
+            </div>
+            <div role="group" aria-labelledby={`${settingsId}-theme`} style={{ display: 'flex', gap: 12, flexWrap: 'wrap', alignItems: 'center' }}>
+              <Button variant={themeMode === 'light' ? 'accent' : 'default'} aria-pressed={themeMode === 'light'} onClick={() => setThemeMode('light')}>
                 Светлая
               </Button>
-              <Button variant={themeMode === 'dark' ? 'accent' : 'default'} onClick={() => setThemeMode('dark')}>
+              <Button variant={themeMode === 'dark' ? 'accent' : 'default'} aria-pressed={themeMode === 'dark'} onClick={() => setThemeMode('dark')}>
                 Тёмная
               </Button>
-              <Button variant={themeMode === 'system' ? 'accent' : 'default'} onClick={() => setThemeMode('system')}>
+              <Button variant={themeMode === 'system' ? 'accent' : 'default'} aria-pressed={themeMode === 'system'} onClick={() => setThemeMode('system')}>
                 Системная
               </Button>
-              <Button variant={themeMode === 'custom' ? 'accent' : 'default'} onClick={() => setThemeMode('custom')}>
+              <Button variant={themeMode === 'custom' ? 'accent' : 'default'} aria-pressed={themeMode === 'custom'} onClick={() => setThemeMode('custom')}>
                 Своя
               </Button>
             </div>
@@ -506,13 +510,14 @@ export default function AccountPage() {
               <h3 style={{ fontSize: 14, marginBottom: 16 }}>Настройка темы</h3>
 
               <div style={{ marginBottom: 16 }}>
-                <label style={{ fontSize: 12, color: colors.white[4], display: 'block', marginBottom: 8 }}>
+                <div id={`${settingsId}-background`} style={{ fontSize: '0.75rem', color: 'var(--muted-text)', marginBottom: 8 }}>
                   Тип фона
-                </label>
-                <div style={{ display: 'flex', gap: 12 }}>
+                </div>
+                <div role="group" aria-labelledby={`${settingsId}-background`} style={{ display: 'flex', gap: 12, flexWrap: 'wrap' }}>
                   <Button
                     small
                     variant={customTheme.bgType === 'gradient' ? 'accent' : 'default'}
+                    aria-pressed={customTheme.bgType === 'gradient'}
                     onClick={() => setCustomTheme({ bgType: 'gradient' })}
                   >
                     Градиент
@@ -520,6 +525,7 @@ export default function AccountPage() {
                   <Button
                     small
                     variant={customTheme.bgType === 'solid' ? 'accent' : 'default'}
+                    aria-pressed={customTheme.bgType === 'solid'}
                     onClick={() => setCustomTheme({ bgType: 'solid' })}
                   >
                     Монолит
@@ -573,11 +579,12 @@ export default function AccountPage() {
               />
 
               <div style={{ marginBottom: 16 }}>
-                <label style={{ fontSize: 12, color: colors.white[4], display: 'block', marginBottom: 8 }}>
+                <label htmlFor={`${settingsId}-font`} style={{ fontSize: '0.75rem', color: 'var(--muted-text)', display: 'block', marginBottom: 8 }}>
                   Размер шрифта: {customTheme.fontSize}px
                 </label>
                 <input
                   type="range"
+                  id={`${settingsId}-font`}
                   min="12"
                   max="18"
                   value={customTheme.fontSize}
@@ -587,13 +594,14 @@ export default function AccountPage() {
               </div>
 
               <div style={{ marginBottom: 16 }}>
-                <label style={{ fontSize: 12, color: colors.white[4], display: 'block', marginBottom: 8 }}>
+                <div id={`${settingsId}-size`} style={{ fontSize: '0.75rem', color: 'var(--muted-text)', marginBottom: 8 }}>
                   Размер карточек
-                </label>
-                <div style={{ display: 'flex', gap: 12 }}>
+                </div>
+                <div role="group" aria-labelledby={`${settingsId}-size`} style={{ display: 'flex', gap: 12, flexWrap: 'wrap' }}>
                   <Button
                     small
                     variant={customTheme.cardSize === 'small' ? 'accent' : 'default'}
+                    aria-pressed={customTheme.cardSize === 'small'}
                     onClick={() => setCustomTheme({ cardSize: 'small' })}
                   >
                     Малый
@@ -601,6 +609,7 @@ export default function AccountPage() {
                   <Button
                     small
                     variant={customTheme.cardSize === 'medium' ? 'accent' : 'default'}
+                    aria-pressed={customTheme.cardSize === 'medium'}
                     onClick={() => setCustomTheme({ cardSize: 'medium' })}
                   >
                     Средний
@@ -608,6 +617,7 @@ export default function AccountPage() {
                   <Button
                     small
                     variant={customTheme.cardSize === 'large' ? 'accent' : 'default'}
+                    aria-pressed={customTheme.cardSize === 'large'}
                     onClick={() => setCustomTheme({ cardSize: 'large' })}
                   >
                     Большой
@@ -616,11 +626,12 @@ export default function AccountPage() {
               </div>
 
               <div style={{ marginBottom: 16 }}>
-                <label style={{ fontSize: 12, color: colors.white[4], display: 'block', marginBottom: 8 }}>
+                <label htmlFor={`${settingsId}-radius`} style={{ fontSize: '0.75rem', color: 'var(--muted-text)', display: 'block', marginBottom: 8 }}>
                   Скругление углов: {customTheme.borderRadius}px
                 </label>
                 <input
                   type="range"
+                  id={`${settingsId}-radius`}
                   min="0"
                   max="48"
                   value={customTheme.borderRadius}
@@ -639,7 +650,7 @@ export default function AccountPage() {
         message="Вы потеряете доступ к этому устройству."
         confirmLabel="Отклонить"
         onCancel={() => setDeclineTarget(null)}
-        onConfirm={() => handleDecline(declineTarget.id)}
+        onConfirm={() => handleDecline(declineTarget)}
         loading={decliding}
       />
 

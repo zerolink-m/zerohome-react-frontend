@@ -43,10 +43,10 @@ export default function AccessWait({ waiting, children = null }) {
 
   return (
     <div className="sp-box sp-fade" style={{ opacity: leaving ? 0 : 1 }}>
-      <StageProgress steps={STAGES} active={activeIndex} failedIndex={failedIndex} />
+      <StageProgress steps={STAGES} active={activeIndex} failedIndex={failedIndex} label="Обновление сессии" />
       {failedIndex != null && (
         <div style={{ textAlign: 'center', marginTop: 20 }}>
-          <div style={{ fontSize: 13, color: colors.statuses.red.text, marginBottom: 14, overflowWrap: 'anywhere' }}>
+          <div role="alert" style={{ fontSize: '0.8125rem', color: colors.statuses.red.text, marginBottom: 14, overflowWrap: 'anywhere' }}>
             {ex.error || 'Не удалось получить токен'}
           </div>
           <Button small onClick={retry} loading={retrying}>

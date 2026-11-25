@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { useLocation, useNavigate, useParams } from 'react-router-dom'
+import { useLocation, useNavigate, useParams } from 'react-router'
 import { findDevicePreview } from '../api/snapshots'
 import { getState } from '../api/authStore'
 import { getCam, patchCam, deleteCam } from '../api/cams'
@@ -11,6 +11,7 @@ import InputField from '../components/InputField'
 import Toggle from '../components/Toggle'
 import Divider from '../components/Divider'
 import ConfirmDialog from '../components/ConfirmDialog'
+import CollapsibleSection from '../components/CollapsibleSection'
 import AllowedUsersManager from '../components/cams/AllowedUsersManager'
 import RecordingSettings from '../components/cams/RecordingSettings'
 import SharesManager from '../components/SharesManager'
@@ -193,7 +194,7 @@ export default function CamDetailPage() {
         </div>
         <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap', alignItems: 'center' }}>
           <Button onClick={() => navigate('/#cams')}>← к списку</Button>
-          {canManage && <Toggle checked={!!cam.enabled} onChange={() => setConfirmEnabled(true)} />}
+          {canManage && <Toggle aria-label="Камера включена" checked={!!cam.enabled} onChange={() => setConfirmEnabled(true)} />}
           {canManage && (
             <Button
               onClick={() => {
@@ -243,8 +244,16 @@ export default function CamDetailPage() {
           </div>
         </DashCard>
 
-        {/* События движения: между панелью просмотра и учётными данными; только при включённой детекции */}
-        {current && !editing && <MotionEventsCard camId={cam.id} />}
+        {current && !editing && <MotionEventsCard camId={cam.id} canDelete={canManage} />}
+
+        {current && !canManage && (
+          <DashCard>
+            <CollapsibleSection key={cam.id} title="Настройки уведомлений">
+              <PushSettings camId={cam.id} />
+              <PushSettings camId={cam.id} section="motion" />
+            </CollapsibleSection>
+          </DashCard>
+        )}
 
         {canManage && editing && (
           <DashCard>
@@ -254,6 +263,7 @@ export default function CamDetailPage() {
                   key={tab.key}
                   small
                   variant={activeTab === tab.key ? 'accent' : 'default'}
+                  aria-pressed={activeTab === tab.key}
                   onClick={() => setActiveTab(tab.key)}
                 >
                   {tab.label}
@@ -316,6 +326,7 @@ export default function CamDetailPage() {
                         ONVIF
                       </label>
                       <Toggle
+                        aria-label="Управление по ONVIF"
                         checked={form.control_protocol === 'onvif'}
                         onChange={(v) => setForm({ ...form, control_protocol: v ? 'onvif' : '' })}
                       />
@@ -357,13 +368,24 @@ export default function CamDetailPage() {
             {activeTab === 'control' && canManage && (
               <>
                 <Divider />
-                <OnvifSettings camId={cam.id} initialSettings={cam} />
+                <OnvifSettings
+                  key={cam.id}
+                  camId={cam.id}
+                  initialSettings={cam}
+                  onSaved={(settings) => setCam((current) => current?.id === cam.id ? { ...current, ...settings } : current)}
+                />
               </>
             )}
 
             {activeTab === 'recording' &&
               (profile?.allow_record === 1 ? (
-                <RecordingSettings camId={cam.id} />
+                <RecordingSettings
+                  key={cam.id}
+                  camId={cam.id}
+                  onSaved={(data) => setCam((current) => current?.id === cam.id
+                    ? { ...current, record: data.record, record_type: data.record_type }
+                    : current)}
+                />
               ) : (
                 <div style={{ fontSize: 12, color: colors.white[4] }}>Запись недоступна для этого аккаунта</div>
               ))}
@@ -390,7 +412,7 @@ export default function CamDetailPage() {
             )}
 
             {activeTab === 'motion' && canManage && (
-              <MotionDetection camId={cam.id} />
+              <MotionDetection key={cam.id} camId={cam.id} />
             )}
 
             {activeTab === 'push-settings' && (

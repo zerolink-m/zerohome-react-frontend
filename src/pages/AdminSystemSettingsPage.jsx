@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { Link } from 'react-router-dom'
+import { Link } from 'react-router'
 import { listSystemSettings, patchSystemSetting } from '../api/systemSettings'
 import Button from '../components/Button'
 import DashCard from '../components/DashCard'

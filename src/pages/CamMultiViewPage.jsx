@@ -1,7 +1,8 @@
 import { useEffect, useLayoutEffect, useRef, useState } from 'react'
-import { useNavigate, useSearchParams } from 'react-router-dom'
+import { useNavigate, useSearchParams } from 'react-router'
 import { useAuth } from '../context/AuthContext'
 import { listCams } from '../api/cams'
+import { LIMIT_MAX } from '../api/pagination'
 import { useToast } from '../context/ToastContext'
 import VideoStreamUniversal from '../components/cams/VideoStreamUniversal'
 import Button from '../components/Button'
@@ -18,12 +19,24 @@ const GRID_OPTIONS = [
 
 const STORAGE_KEY = 'multiview_config'
 
-// Парсинг query string формата: grid=2x2&slots=id1,id2,id3,id4
+function normalizeSlots(values, count) {
+  const ids = new Set()
+  return Array.from({ length: count }, (_, index) => {
+    const value = values[index]
+    const id = typeof value === 'number' || /^\d+$/.test(value) ? Number(value) : NaN
+    if (!Number.isSafeInteger(id) || id < 1 || ids.has(id)) return null
+    ids.add(id)
+    return id
+  })
+}
+
+function normalizeLayout(config) {
+  const grid = GRID_OPTIONS.some(option => option.value === config?.grid) ? config.grid : '2x2'
+  return { grid, slots: normalizeSlots(Array.isArray(config?.slots) ? config.slots : [], Number(grid[0]) ** 2) }
+}
+
 function parseQuery(searchParams) {
-  const grid = searchParams.get('grid') || '2x2'
-  const slotsParam = searchParams.get('slots')
-  const slots = slotsParam ? slotsParam.split(',').map(id => id === 'null' ? null : parseInt(id)) : []
-  return { grid, slots }
+  return normalizeLayout({ grid: searchParams.get('grid'), slots: searchParams.get('slots')?.split(',', 9) })
 }
 
 // Загрузка конфига из localStorage
@@ -65,56 +78,56 @@ export default function CamMultiViewPage() {
 
   const [cams, setCams] = useState([])
   const [loading, setLoading] = useState(true)
-  const gate = useLoadGate(loading)
+  const [loadError, setLoadError] = useState(null)
+  const [retry, setRetry] = useState(0)
+  const gate = useLoadGate(loading, loadError)
   const [sidebarOpen, setSidebarOpen] = useState(true)
   const [isFullscreen, setIsFullscreen] = useState(false)
 
-  // Query имеет приоритет над storage
-  const queryConfig = parseQuery(searchParams)
-  const hasQueryConfig = searchParams.has('grid') || searchParams.has('slots')
-  const storageConfig = loadFromStorage()
-
-  const initialConfig = hasQueryConfig ? queryConfig : (storageConfig || { grid: '2x2', slots: [] })
-
-  const [grid, setGrid] = useState(initialConfig.grid)
-  const [slots, setSlots] = useState(initialConfig.slots)
+  const [{ grid, slots }, setLayout] = useState(() => (
+    searchParams.has('grid') || searchParams.has('slots') ? parseQuery(searchParams) : normalizeLayout(loadFromStorage())
+  ))
+  const setSlots = (update) => setLayout(current => ({ ...current, slots: update(current.slots) }))
+  const [targetSlot, setTargetSlot] = useState('')
+  const [sourceSlot, setSourceSlot] = useState('')
   const [draggedCamId, setDraggedCamId] = useState(null)
   const [draggedFromSlot, setDraggedFromSlot] = useState(null)
 
-  const gridSize = parseInt(grid.split('x')[0])
+  const gridSize = Number(grid[0])
   const totalSlots = gridSize * gridSize
 
   // Загрузка списка камер
   useEffect(() => {
+    let cancelled = false
     async function load() {
+      setLoading(true)
+      setLoadError(null)
       try {
-        setLoading(true)
-        const data = await listCams()
-        setCams(data.items || [])
+        const all = new Map()
+        let offset = 0
+        while (!cancelled) {
+          const { items, total } = await listCams({ limit: LIMIT_MAX, offset, sort_by: 'id', order: 'asc' })
+          if (cancelled) return
+          for (const cam of items) all.set(cam.id, cam)
+          offset += items.length
+          if (!items.length || offset >= total) break
+        }
+        if (!cancelled) setCams([...all.values()])
       } catch (e) {
-        toastRef.current.error(e.message)
+        if (!cancelled) setLoadError(e.message || 'Не удалось загрузить список камер')
       } finally {
-        setLoading(false)
+        if (!cancelled) setLoading(false)
       }
     }
     load()
-  }, [])
+    return () => { cancelled = true }
+  }, [retry])
 
-  // Обновление slots при изменении grid
-  useEffect(() => {
-    const newTotalSlots = gridSize * gridSize
-    setSlots(prev => {
-      const newSlots = [...prev]
-      // Обрезаем или дополняем null
-      if (newSlots.length > newTotalSlots) {
-        return newSlots.slice(0, newTotalSlots)
-      }
-      while (newSlots.length < newTotalSlots) {
-        newSlots.push(null)
-      }
-      return newSlots
-    })
-  }, [gridSize])
+  function changeGrid(value) {
+    setLayout(current => normalizeLayout({ grid: value, slots: current.slots }))
+    setSourceSlot('')
+    setTargetSlot('')
+  }
 
   // Сохранение и обновление URL
   useEffect(() => {
@@ -137,10 +150,14 @@ export default function CamMultiViewPage() {
     if (!el) return
     const update = () => setAreaSize({ w: el.clientWidth, h: el.clientHeight })
     update()
-    const ro = new ResizeObserver(update)
-    ro.observe(el)
-    return () => ro.disconnect()
-  }, [loading])
+    if (typeof ResizeObserver !== 'undefined') {
+      const ro = new ResizeObserver(update)
+      ro.observe(el)
+      return () => ro.disconnect()
+    }
+    window.addEventListener('resize', update)
+    return () => window.removeEventListener('resize', update)
+  }, [gate.busy, sidebarOpen, isFullscreen])
 
   const gap = isFullscreen ? 0 : 16
   const cellW = Math.max(
@@ -159,6 +176,10 @@ export default function CamMultiViewPage() {
 
   // Доступные камеры (не используются в слотах)
   const availableCams = cams.filter(cam => cam.enabled === 1 && !usedCamIds.has(cam.id))
+  const slotOptions = slots.map((camId, index) => ({
+    value: String(index),
+    label: `Слот ${index + 1}${camId != null ? ` · ${cams.find(cam => cam.id === camId)?.name || `Камера ${camId}`}` : ''}`,
+  }))
 
   // Drag & Drop handlers
   function handleDragStartFromList(camId) {
@@ -171,46 +192,38 @@ export default function CamMultiViewPage() {
     setDraggedFromSlot(slotIndex)
   }
 
-  function handleDrop(slotIndex) {
-    if (draggedCamId === null) return
-
-    setSlots(prev => {
-      const newSlots = [...prev]
-
-      // Если перетащили из другого слота, очищаем старый слот
-      if (draggedFromSlot !== null) {
-        newSlots[draggedFromSlot] = null
-      }
-
-      // Если в целевом слоте уже есть камера, меняем их местами
-      if (draggedFromSlot !== null && newSlots[slotIndex] !== null) {
-        newSlots[draggedFromSlot] = newSlots[slotIndex]
-      }
-
-      newSlots[slotIndex] = draggedCamId
-      return newSlots
-    })
-
+  function clearDrag() {
     setDraggedCamId(null)
     setDraggedFromSlot(null)
   }
 
-  // Клик по камере в списке: ставим в первый свободный слот.
-  function handleAddToFirstFreeSlot(camId) {
-    const free = Array.from({ length: totalSlots }).findIndex((_, i) => slots[i] == null)
+  function placeCamera(camId, target, source = null) {
+    if (source === target) return
+    setSlots(prev => {
+      const next = [...prev]
+      if (source !== null) next[source] = prev[target]
+      next[target] = camId
+      return next
+    })
+    setSourceSlot('')
+  }
+
+  function handleDrop(slotIndex) {
+    if (draggedCamId !== null) placeCamera(draggedCamId, slotIndex, draggedFromSlot)
+    clearDrag()
+  }
+
+  function handleAddCamera(camId) {
+    const free = targetSlot === '' ? slots.findIndex(id => id == null) : Number(targetSlot)
     if (free === -1) {
       toastRef.current.warning('Нет свободных слотов: увеличьте сетку или уберите камеру')
       return
     }
-    setSlots(prev => {
-      const next = [...prev]
-      while (next.length < totalSlots) next.push(null)
-      next[free] = camId
-      return next
-    })
+    placeCamera(camId, free)
   }
 
   function handleRemoveFromSlot(slotIndex) {
+    if (sourceSlot === String(slotIndex)) setSourceSlot('')
     setSlots(prev => {
       const newSlots = [...prev]
       newSlots[slotIndex] = null
@@ -244,7 +257,7 @@ export default function CamMultiViewPage() {
 
   if (gate.busy) {
     return (
-      <PageLoader gate={gate} />
+      <PageLoader gate={gate} onRetry={() => setRetry(value => value + 1)} />
     )
   }
 
@@ -254,11 +267,11 @@ export default function CamMultiViewPage() {
       {!isFullscreen && (
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 16 }}>
           <h1 style={{ fontSize: 24, margin: 0 }}>Multi-View</h1>
-          <div style={{ display: 'flex', gap: 12, alignItems: 'center' }}>
+          <div style={{ display: 'flex', gap: 12, alignItems: 'center', flexWrap: 'wrap' }}>
             <SelectField
               label="Сетка"
               value={grid}
-              onChange={(e) => setGrid(e.target.value)}
+              onChange={(e) => changeGrid(e.target.value)}
               options={GRID_OPTIONS}
               style={{ minWidth: 150 }}
             />
@@ -269,6 +282,14 @@ export default function CamMultiViewPage() {
           </div>
         </div>
       )}
+
+      {!isFullscreen && <div style={{ display: 'flex', flexWrap: 'wrap', gap: 12, alignItems: 'center' }}>
+        <SelectField label="Куда поставить камеру" value={targetSlot} onChange={(event) => setTargetSlot(event.target.value)} options={[{ value: '', label: 'Первый свободный слот' }, ...slotOptions]} />
+        <SelectField label="Какую камеру переставить" value={sourceSlot} onChange={(event) => setSourceSlot(event.target.value)} options={[{ value: '', label: 'Выберите слот' }, ...slotOptions.filter((_, index) => slots[index] != null)]} />
+        <Button small disabled={sourceSlot === '' || targetSlot === '' || sourceSlot === targetSlot} onClick={() => placeCamera(slots[Number(sourceSlot)], Number(targetSlot), Number(sourceSlot))}>
+          Переставить
+        </Button>
+      </div>}
 
       {/* Основной контент */}
       <div style={{ display: 'flex', gap: isFullscreen ? 0 : 24, flex: 1, overflow: 'hidden', position: 'relative' }}>
@@ -291,6 +312,8 @@ export default function CamMultiViewPage() {
                 Доступные камеры
               </h3>
               <button
+                type="button"
+                aria-label="Свернуть список камер"
                 onClick={() => setSidebarOpen(false)}
                 style={{
                   background: 'none',
@@ -306,26 +329,21 @@ export default function CamMultiViewPage() {
             </div>
             <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
               {availableCams.map(cam => (
-                <div
+                <button
                   key={cam.id}
+                  type="button"
                   draggable
-                  role="button"
-                  tabIndex={0}
-                  title="Нажмите, чтобы добавить в свободный слот, или перетащите"
-                  onClick={() => handleAddToFirstFreeSlot(cam.id)}
-                  onKeyDown={(e) => {
-                    if (e.key === 'Enter' || e.key === ' ') {
-                      e.preventDefault()
-                      handleAddToFirstFreeSlot(cam.id)
-                    }
-                  }}
+                  title="Добавить камеру в выбранный слот или перетащить"
+                  onClick={() => handleAddCamera(cam.id)}
                   onDragStart={() => handleDragStartFromList(cam.id)}
+                  onDragEnd={clearDrag}
                   style={{
                     padding: 12,
                     background: 'var(--w05)',
                     borderRadius: 10,
                     cursor: 'pointer',
                     fontSize: 13,
+                    textAlign: 'start',
                     color: 'var(--text)',
                     border: '1px solid var(--w15)',
                     transition: 'all 0.2s',
@@ -334,7 +352,7 @@ export default function CamMultiViewPage() {
                   onMouseLeave={(e) => (e.currentTarget.style.background = 'var(--w05)')}
                 >
                   {cam.name || `Камера ${cam.id}`}
-                </div>
+                </button>
               ))}
               {availableCams.length === 0 && (
                 <div style={{ fontSize: 12, color: 'var(--w70)', textAlign: 'center', padding: 16 }}>
@@ -345,6 +363,8 @@ export default function CamMultiViewPage() {
           </div>
         ) : (
           <button
+            type="button"
+            aria-label="Раскрыть список камер"
             onClick={() => setSidebarOpen(true)}
             style={{
               width: 40,
@@ -434,6 +454,7 @@ export default function CamMultiViewPage() {
                     <div
                       draggable
                       onDragStart={() => handleDragStartFromSlot(index, camId)}
+                      onDragEnd={clearDrag}
                       style={{
                         position: 'absolute',
                         inset: 0,
@@ -442,9 +463,11 @@ export default function CamMultiViewPage() {
                       onMouseDown={(e) => e.currentTarget.style.cursor = 'grabbing'}
                       onMouseUp={(e) => e.currentTarget.style.cursor = 'grab'}
                     >
-                      <VideoStreamUniversal camId={camId} authToken={accessToken} latencyOverlay />
+                      <VideoStreamUniversal key={camId} camId={camId} authToken={accessToken} latencyOverlay />
                     </div>
                     <button
+                      type="button"
+                      aria-label={`Убрать камеру из слота ${index + 1}`}
                       onClick={() => handleRemoveFromSlot(index)}
                       style={{
                         position: 'absolute',
@@ -465,7 +488,7 @@ export default function CamMultiViewPage() {
                   </>
                 ) : (
                   <div style={{ fontSize: 12, color: 'var(--w55)', textAlign: 'center', padding: 16 }}>
-                    Перетащите камеру сюда или нажмите на неё в списке
+                    Слот {index + 1}. Выберите его и нажмите на камеру в списке.
                   </div>
                 )}
               </div>

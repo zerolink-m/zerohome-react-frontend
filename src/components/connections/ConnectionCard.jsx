@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { Link } from 'react-router'
 import DashCard from '../DashCard'
 import Pill from '../Pill'
 import { colors } from '../../styles/tokens'
@@ -10,7 +10,6 @@ const PROVIDER_LABELS = {
 }
 
 export default function ConnectionCard({ connection }) {
-  const navigate = useNavigate()
   const [hover, setHover] = useState(false)
 
   const providerLabel = PROVIDER_LABELS[connection.provider] || connection.provider
@@ -30,7 +29,6 @@ export default function ConnectionCard({ connection }) {
 
   return (
     <DashCard
-      onClick={() => navigate(`/connections/${connection.id}`)}
       onMouseEnter={() => setHover(true)}
       onMouseLeave={() => setHover(false)}
       style={{
@@ -40,6 +38,7 @@ export default function ConnectionCard({ connection }) {
         transition: '0.25s ease',
       }}
     >
+      <Link className="card-open-link" to={`/connections/${connection.id}`} aria-label={`Открыть соединение: ${connection.name || connection.id}`} />
       <div style={{ fontSize: 15, marginBottom: 10, wordBreak: 'break-word', overflowWrap: 'anywhere', paddingRight: 20 }}>
         {connection.name || `Соединение #${connection.id}`}
       </div>

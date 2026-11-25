@@ -1,4 +1,3 @@
-import { Link } from 'react-router-dom'
 import { listCams } from '../api/cams'
 import { listSwitches } from '../api/switches'
 import CamCard from '../components/cams/CamCard'
@@ -15,9 +14,7 @@ function AdminToolCard({ title, description, to, action = 'Настроить' }
         <div style={{ fontSize: 16, fontWeight: 600 }}>{title}</div>
         <div style={{ fontSize: 12, lineHeight: 1.6, color: colors.white[4], marginTop: 8 }}>{description}</div>
       </div>
-      <Link to={to} style={{ alignSelf: 'flex-start', textDecoration: 'none' }}>
-        <Button variant="accent" small>{action}</Button>
-      </Link>
+      <Button to={to} variant="accent" small style={{ alignSelf: 'flex-start' }} aria-label={`${action}: ${title}`}>{action}</Button>
     </DashCard>
   )
 }
@@ -27,7 +24,7 @@ export default function AdminPage() {
     <div>
       <h1 style={{ fontSize: 20, marginBottom: 24 }}>Админ-панель</h1>
 
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(300px, 1fr))', gap: 16, marginBottom: 24 }}>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(min(100%, 300px), 1fr))', gap: 16, marginBottom: 24 }}>
         <DashCard>
           <div
             style={{
@@ -44,11 +41,9 @@ export default function AdminPage() {
                 Управление учётными записями и сессиями
               </div>
             </div>
-            <Link to="/admin/users">
-              <Button variant="accent" small>
+              <Button to="/admin/users" variant="accent" small aria-label="Открыть пользователей">
                 Открыть
               </Button>
-            </Link>
           </div>
         </DashCard>
 
@@ -68,11 +63,9 @@ export default function AdminPage() {
                 Системная статистика и метрики
               </div>
             </div>
-            <Link to="/admin/stats">
-              <Button variant="accent" small>
+              <Button to="/admin/stats" variant="accent" small aria-label="Открыть статистику">
                 Открыть
               </Button>
-            </Link>
           </div>
         </DashCard>
       </div>

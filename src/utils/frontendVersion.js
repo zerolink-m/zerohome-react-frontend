@@ -1,5 +1,4 @@
-// /config expects a single leading `v`; VITE_APP_VERSION may already include it.
-export function normalizeFrontendVersion(version) {
-  const value = String(version || '').trim().replace(/^v+/i, '')
-  return `v${value || '1.0.0-Release'}`
-}
+import { version } from '../../package.json'
+
+export const FRONTEND_VERSION = version.trim().replace(/^v+/i, '')
+export const FRONTEND_API_VERSION = `v${FRONTEND_VERSION}`

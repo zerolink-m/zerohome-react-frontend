@@ -9,6 +9,7 @@ import { colors } from '../../styles/tokens'
 import Spinner from '../Spinner'
 
 const STEP = 0.1
+const LOCK_MS = 3000
 const clamp = (v) => Math.max(-1, Math.min(1, v))
 
 // onUnsupported — вызывается, когда камера не поддерживает PTZ (CODES.PTZ_NOT_CONFIGURED): компонент при этом ничего
@@ -21,10 +22,16 @@ export default function PTZControl({ camId, authToken, onUnsupported }) {
   const [locked, setLocked] = useState(false)
   const [notConfigured, setNotConfigured] = useState(false)
   const lockTimer = useRef(null)
+  const inCommand = useRef(false)
+  const generation = useRef(0)
+  const commandCount = useRef(0)
   const ptzOpts = authToken ? { shareToken: authToken } : undefined
 
   useEffect(() => {
     let cancelled = false
+    setPos(null)
+    setNotConfigured(false)
+    setLocked(false)
     async function load() {
       setLoading(true)
       try {
@@ -43,6 +50,9 @@ export default function PTZControl({ camId, authToken, onUnsupported }) {
     load()
     return () => {
       cancelled = true
+      generation.current += 1
+      clearTimeout(lockTimer.current)
+      inCommand.current = false
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [camId, authToken])
@@ -52,41 +62,46 @@ export default function PTZControl({ camId, authToken, onUnsupported }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [notConfigured])
 
-  useEffect(() => () => clearTimeout(lockTimer.current), [])
-
-  function armLocalLock() {
-    setLocked(true)
-    clearTimeout(lockTimer.current)
-    lockTimer.current = setTimeout(() => setLocked(false), 1000)
-  }
-
   async function refresh() {
+    const requestGeneration = generation.current
+    const commandWhenStarted = commandCount.current
     try {
       const p = await getPtz(camId, ptzOpts)
-      setPos(p)
+      if (requestGeneration === generation.current && commandWhenStarted === commandCount.current) setPos(p)
     } catch (e) {
-      toast.error(e.message)
+      if (requestGeneration === generation.current) toast.error(e.message)
     }
   }
 
   async function move(delta) {
-    if (!pos || locked) return
+    if (!pos || inCommand.current) return
+    const requestGeneration = generation.current
     const next = {
       pan: clamp(pos.pan + (delta.pan || 0)),
       tilt: clamp(pos.tilt + (delta.tilt || 0)),
       zoom: clamp(pos.zoom + (delta.zoom || 0)),
     }
-    setPos(next)
-    armLocalLock()
+    inCommand.current = true
+    commandCount.current += 1
+    setLocked(true)
     try {
-      await setPtz(camId, next, ptzOpts)
+      const confirmed = await setPtz(camId, next, ptzOpts)
+      if (requestGeneration === generation.current) setPos(confirmed ?? next)
     } catch (e) {
+      if (requestGeneration !== generation.current) return
       if (e instanceof ApiError && e.code === CODES.PTZ_LOCKED) {
         toast.warning('Камера временно заблокирована другой PTZ-командой')
       } else if (e instanceof ApiError && e.code === CODES.PTZ_NOT_CONFIGURED) {
         setNotConfigured(true)
       } else {
         toast.error(e.message)
+      }
+    } finally {
+      if (requestGeneration === generation.current) {
+        lockTimer.current = setTimeout(() => {
+          inCommand.current = false
+          setLocked(false)
+        }, LOCK_MS)
       }
     }
   }
@@ -146,7 +161,7 @@ export default function PTZControl({ camId, authToken, onUnsupported }) {
       </div>
       {locked && (
         <div style={{ fontSize: 11, color: colors.statuses.yellow.text, marginTop: 8 }}>
-          Блокировка 1с после команды...
+          Команда выполняется. Пауза между командами — 3 с.
         </div>
       )}
     </div>

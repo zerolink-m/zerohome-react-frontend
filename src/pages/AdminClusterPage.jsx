@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { Link } from 'react-router-dom'
+import { Link } from 'react-router'
 import { getAssignment, getCluster, listAssignments } from '../api/cluster'
 import Button from '../components/Button'
 import DashCard from '../components/DashCard'

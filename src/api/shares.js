@@ -10,7 +10,7 @@ export function createShare({ device_type, device_id, type, filename, ttl_second
 }
 
 // GET /v1/shares — список share-ссылок пользователя (admin — все).
-// Общая пагинация/поиск; фильтра по device_type/device_id в API нет.
+// Условия по device_type/device_id передаются через общий list-query.
 export function listShares(filter = {}) {
   return request(`/shares${buildQuery(filter)}`).then(data => normalizeList(data, 'shares'))
 }

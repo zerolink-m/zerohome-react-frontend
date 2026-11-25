@@ -2,9 +2,7 @@ import T from '../styles/tokens'
 import { useEffect, useState } from 'react'
 import { useBackendHealth } from '../context/HealthContext'
 import { getHostState, subscribeHost } from '../api/endpoints'
-import packageJson from '../../package.json';
-
-const FRONTEND_VERSION = import.meta.env.VITE_APP_VERSION || packageJson.version || '1.0.0-Release'
+import { FRONTEND_VERSION } from '../utils/frontendVersion'
 
 // Единообразный стиль: показываем версию без ведущего `v`.
 // Backend может вернуть "v3.2.0-Beta" или "3.2.0-Beta" — обрезаем префикс.
@@ -26,7 +24,7 @@ export default function FooterVersion() {
     <div style={T.footerVersion}>
       ZeroHome API {apiVersionLabel}{host.enabled && host.active === 'main' ? ' · резервный хост' : ''}
       <br />
-      Frontend {stripV(FRONTEND_VERSION)}
+      Frontend {FRONTEND_VERSION}
     </div>
   )
 }

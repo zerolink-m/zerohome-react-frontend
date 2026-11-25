@@ -86,6 +86,7 @@ export default function PushSettings({ camId, section = 'general', onSyncNotify 
           Включить уведомления
         </label>
         <Toggle
+          aria-label="Уведомления камеры"
           checked={Boolean(settings.enabled)}
           onChange={(checked) => updateSetting('enabled', checked ? 1 : 0)}
         />
@@ -99,6 +100,7 @@ export default function PushSettings({ camId, section = 'general', onSyncNotify 
               Камера в сети
             </label>
             <Toggle
+              aria-label="Камера в сети"
               checked={Boolean(settings.notify_online)}
               onChange={(checked) => updateSetting('notify_online', checked ? 1 : 0)}
             />
@@ -108,6 +110,7 @@ export default function PushSettings({ camId, section = 'general', onSyncNotify 
               Камера не отвечает
             </label>
             <Toggle
+              aria-label="Камера не отвечает"
               checked={Boolean(settings.notify_offline)}
               onChange={(checked) => updateSetting('notify_offline', checked ? 1 : 0)}
             />
@@ -117,6 +120,7 @@ export default function PushSettings({ camId, section = 'general', onSyncNotify 
               Изменение состояния
             </label>
             <Toggle
+              aria-label="Изменение состояния камеры"
               checked={Boolean(settings.notify_state_change)}
               onChange={(checked) => updateSetting('notify_state_change', checked ? 1 : 0)}
             />
@@ -136,6 +140,7 @@ export default function PushSettings({ camId, section = 'general', onSyncNotify 
             Присылать push о движении
           </label>
           <Toggle
+            aria-label="Уведомления о движении"
             checked={Boolean(settings.motion_detection_enabled)}
             onChange={(checked) => updateSetting('motion_detection_enabled', checked ? 1 : 0)}
           />
@@ -179,6 +184,7 @@ export default function PushSettings({ camId, section = 'general', onSyncNotify 
                     Люди
                   </label>
                   <Toggle
+                    aria-label="Детекция людей"
                     checked={Boolean(settings.motion_detect_person)}
                     onChange={(checked) => updateSetting('motion_detect_person', checked ? 1 : 0)}
                   />
@@ -188,6 +194,7 @@ export default function PushSettings({ camId, section = 'general', onSyncNotify 
                     Собаки
                   </label>
                   <Toggle
+                    aria-label="Детекция собак"
                     checked={Boolean(settings.motion_detect_dog)}
                     onChange={(checked) => updateSetting('motion_detect_dog', checked ? 1 : 0)}
                   />
@@ -197,6 +204,7 @@ export default function PushSettings({ camId, section = 'general', onSyncNotify 
                     Кошки
                   </label>
                   <Toggle
+                    aria-label="Детекция кошек"
                     checked={Boolean(settings.motion_detect_cat)}
                     onChange={(checked) => updateSetting('motion_detect_cat', checked ? 1 : 0)}
                   />
@@ -206,6 +214,7 @@ export default function PushSettings({ camId, section = 'general', onSyncNotify 
                     Машины
                   </label>
                   <Toggle
+                    aria-label="Детекция машин"
                     checked={Boolean(settings.motion_detect_car)}
                     onChange={(checked) => updateSetting('motion_detect_car', checked ? 1 : 0)}
                   />
@@ -215,6 +224,7 @@ export default function PushSettings({ camId, section = 'general', onSyncNotify 
                     Распознавание номеров (OCR)
                   </label>
                   <Toggle
+                    aria-label="Распознавание номеров"
                     checked={Boolean(settings.motion_license_plate_ocr)}
                     onChange={(checked) => updateSetting('motion_license_plate_ocr', checked ? 1 : 0)}
                   />

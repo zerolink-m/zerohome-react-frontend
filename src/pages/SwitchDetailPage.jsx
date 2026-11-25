@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { useLocation, useNavigate, useParams } from 'react-router-dom'
+import { useLocation, useNavigate, useParams } from 'react-router'
 import { findDevicePreview } from '../api/snapshots'
 import { getState } from '../api/authStore'
 import { getSwitch, patchSwitch, deleteSwitch } from '../api/switches'
@@ -16,6 +16,7 @@ import Divider from '../components/Divider'
 import ConfirmDialog from '../components/ConfirmDialog'
 import AllowedUsersManager from '../components/cams/AllowedUsersManager'
 import SharesManager from '../components/SharesManager'
+import CollapsibleSection from '../components/CollapsibleSection'
 import ShareLinkDialog from '../components/cams/ShareLinkDialog'
 import StateToggle from '../components/switches/StateToggle'
 import SwitchPushSettings from '../components/switches/SwitchPushSettings'
@@ -124,6 +125,7 @@ export default function SwitchDetailPage() {
       const body = { name, notify: Number(notify) }
       if (activeTab === 'control' && controlMetadata && !isAuto) {
         try {
+          body.control_protocol = switchItem.control_protocol
           body.control_metadata =
             switchItem.control_protocol === 'custom' ? customFormToControlmeta(controlMetadata) : controlMetadata
         } catch (err) {
@@ -211,7 +213,7 @@ export default function SwitchDetailPage() {
         </div>
         <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap', alignItems: 'center' }}>
           <Button onClick={() => navigate('/#switches')}>← к списку</Button>
-          {canManage && <Toggle checked={!!switchItem.enabled} onChange={() => setConfirmEnabled(true)} />}
+          {canManage && <Toggle aria-label="Выключатель включён" checked={!!switchItem.enabled} onChange={() => setConfirmEnabled(true)} />}
           {canManage && (
             <Button
               onClick={() => {
@@ -234,6 +236,14 @@ export default function SwitchDetailPage() {
           <StateToggle switchId={switchItem.id} large={!Array.isArray(switchItem.control_metadata?.dp_codes) || switchItem.control_metadata.dp_codes.length <= 1} />
         </DashCard>
 
+        {current && !!switchItem && !canManage && (
+          <DashCard>
+            <CollapsibleSection key={switchItem.id} title="Настройки уведомлений">
+              <SwitchPushSettings switchId={switchItem.id} />
+            </CollapsibleSection>
+          </DashCard>
+        )}
+
         {canManage && editing && (
           <DashCard>
             <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginBottom: 20 }}>
@@ -242,6 +252,7 @@ export default function SwitchDetailPage() {
                   key={tab.key}
                   small
                   variant={activeTab === tab.key ? 'accent' : 'default'}
+                  aria-pressed={activeTab === tab.key}
                   onClick={() => setActiveTab(tab.key)}
                 >
                   {tab.label}
@@ -314,7 +325,7 @@ export default function SwitchDetailPage() {
                   <label style={{ display: 'block', fontSize: 12, color: colors.white[4], marginBottom: 6 }}>
                     Уведомления о событиях выключателя
                   </label>
-                  <Toggle checked={notify === 1} onChange={(v) => setNotify(v ? 1 : 0)} />
+                  <Toggle aria-label="Уведомления о выключателе" checked={notify === 1} onChange={(v) => setNotify(v ? 1 : 0)} />
                 </div>
                 <Button variant="accent" type="submit" loading={saving}>
                   Сохранить

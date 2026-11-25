@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useId, useState } from 'react'
 import { colors } from '../styles/tokens'
 
 // Сворачиваемая секция с ленивой загрузкой содержимого.
@@ -13,22 +13,22 @@ import { colors } from '../styles/tokens'
 export default function CollapsibleSection({ title, defaultOpen = false, count, onOpen, children }) {
   const [open, setOpen] = useState(defaultOpen)
   const [loaded, setLoaded] = useState(defaultOpen)
+  const contentId = useId()
 
   function toggle() {
-    setOpen((prev) => {
-      const next = !prev
-      if (next && !loaded) {
-        setLoaded(true)
-        if (onOpen) onOpen()
-      }
-      return next
-    })
+    if (!open && !loaded) {
+      setLoaded(true)
+      onOpen?.()
+    }
+    setOpen(!open)
   }
 
   return (
     <div>
       <button
         type="button"
+        aria-expanded={open}
+        aria-controls={contentId}
         onClick={toggle}
         style={{
           background: 'none',
@@ -45,7 +45,7 @@ export default function CollapsibleSection({ title, defaultOpen = false, count, 
           textAlign: 'left',
         }}
       >
-        <span style={{ fontSize: 13, color: colors.white[4], width: 14, display: 'inline-block' }}>
+        <span aria-hidden="true" style={{ fontSize: 13, color: colors.white[4], width: 14, display: 'inline-block' }}>
           {open ? '▾' : '▸'}
         </span>
         <span style={{ fontSize: 16, fontWeight: 600 }}>{title}</span>
@@ -54,7 +54,7 @@ export default function CollapsibleSection({ title, defaultOpen = false, count, 
         )}
       </button>
 
-      {open && loaded && <div>{children}</div>}
+      <div id={contentId} hidden={!open}>{open && loaded ? children : null}</div>
     </div>
   )
 }

@@ -1,7 +1,9 @@
-import { useState } from 'react'
+import { useId, useState } from 'react'
 import T from '../styles/tokens'
 
-export default function SelectField({ label, value, onChange, options, name, disabled }) {
+export default function SelectField({ label, value, onChange, options, name, disabled, id, style: wrapperStyle, ...rest }) {
+  const generatedId = useId()
+  const selectId = id ?? generatedId
   const [focused, setFocused] = useState(false)
 
   const style = {
@@ -12,9 +14,11 @@ export default function SelectField({ label, value, onChange, options, name, dis
   }
 
   return (
-    <div style={T.fieldWrap}>
-      {label && <label style={T.label}>{label}</label>}
+    <div style={{ ...T.fieldWrap, ...wrapperStyle }}>
+      {label && <label htmlFor={selectId} style={T.label}>{label}</label>}
       <select
+        {...rest}
+        id={selectId}
         style={style}
         name={name}
         value={value}

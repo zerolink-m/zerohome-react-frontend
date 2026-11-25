@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { Link, useNavigate } from 'react-router-dom'
+import { Link, useNavigate, useOutletContext } from 'react-router'
 import { useAuth } from '../context/AuthContext'
 import GlassCard from '../components/GlassCard'
 import InputField from '../components/InputField'
@@ -13,6 +13,7 @@ const EMPTY = { name: '', surname: '', email: '', password: '' }
 export default function RegisterPage() {
   const { register } = useAuth()
   const navigate = useNavigate()
+  const setAuthenticating = useOutletContext()
 
   const [form, setForm] = useState(EMPTY)
   const [error, setError] = useState('')
@@ -26,6 +27,7 @@ export default function RegisterPage() {
     e.preventDefault()
     setError('')
     setLoading(true)
+    setAuthenticating?.(true)
     try {
       await register(form)
       navigate('/setup', { replace: true, state: { afterLogin: true, returnTo: '/' } })
@@ -33,6 +35,7 @@ export default function RegisterPage() {
       setError(e.message)
     } finally {
       setLoading(false)
+      setAuthenticating?.(false)
     }
   }
 
@@ -49,6 +52,7 @@ export default function RegisterPage() {
       }}
     >
       <GlassCard>
+        <h1 className="sr-only">Регистрация</h1>
         <div style={{ textAlign: 'center', marginBottom: 32, color: 'var(--accent)', overflow: 'hidden' }}>
           <LogoFull height={40} style={{ maxWidth: '100%', height: 'auto' }} />
         </div>
@@ -69,14 +73,14 @@ export default function RegisterPage() {
             onChange={(e) => update('password', e.target.value)}
             autoComplete="new-password"
           />
-          {error && <div style={{ ...T.errorBox, marginBottom: 20 }}>{error}</div>}
+          {error && <div role="alert" style={{ ...T.errorBox, marginBottom: 20 }}>{error}</div>}
           <Button variant="accent" type="submit" loading={loading} style={{ width: '100%' }}>
             Зарегистрироваться
           </Button>
         </form>
         <Divider />
-        <div style={{ textAlign: 'center', fontSize: 12, color: 'rgba(255,255,255,0.4)' }}>
-          Уже есть аккаунт? <Link to="/login" style={{ color: '#9ddcff' }}>Войти</Link>
+        <div style={{ textAlign: 'center', fontSize: '0.75rem', color: 'var(--muted-text)' }}>
+          Уже есть аккаунт? <Link to="/login" className="text-link">Войти</Link>
         </div>
       </GlassCard>
     </div>

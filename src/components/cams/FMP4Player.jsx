@@ -1,6 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
 import { streamUrl, streamAuthHeaders } from '../../api/cams'
-import { colors } from '../../styles/tokens'
 import { debugLog, bytesToHex, bytesToAscii } from '../../utils/debugLog'
 import VideoControls from './VideoControls'
 import StreamStages from './StreamStages'
@@ -24,6 +23,7 @@ const BUFFER_WINDOW_SECONDS = 30
 const LIVE_EDGE_MAX_LAG = 2
 const LIVE_EDGE_TARGET = 0.5
 const MAX_VIDEO_FRAME_QUEUE = 12
+const STREAM_IDLE_TIMEOUT_MS = 15_000
 
 function findVideoAvcC(buf, moov) {
   for (const trak of iterBoxes(buf, moov.bodyStart, moov.end)) {
@@ -56,6 +56,7 @@ export default function FMP4Player({ camId, authToken, onError, onPlaying }) {
   const videoRef = useRef(null)
   const canvasRef = useRef(null)
   const gainNodeRef = useRef(null)
+  const mutedRef = useRef(true)
   const [playbackMode, setPlaybackMode] = useState(null)
   const [stage, setStage] = useState(0)
   const [streamError, setStreamError] = useState(null)
@@ -74,6 +75,7 @@ export default function FMP4Player({ camId, authToken, onError, onPlaying }) {
     }
     const controller = new AbortController()
     let reader = null
+    let idleTimer = null
 
     // --- MediaSource ---
     let mediaSource = null
@@ -95,12 +97,20 @@ export default function FMP4Player({ camId, authToken, onError, onPlaying }) {
 
     function fail(message) {
       if (cancelled) return
-      debugLog('stream', 'fail:', message)
-      setStreamError({ message, stage: currentStage })
-      cancelled = true
-      controller.abort()
-      if (reader) reader.cancel().catch(() => {})
-      if (onError) onError(message)
+      const text = typeof message === 'string' && message.trim() ? message : 'Не удалось запустить видеопоток'
+      debugLog('stream', 'fail:', text)
+      setStreamError({ message: text, stage: currentStage })
+      cleanup()
+      onError?.(text)
+    }
+
+    async function withIdleTimeout(start, message = 'Поток не прислал данные вовремя') {
+      idleTimer = setTimeout(() => fail(message), STREAM_IDLE_TIMEOUT_MS)
+      try {
+        return await start()
+      } finally {
+        clearTimeout(idleTimer)
+      }
     }
 
     function maybeMarkPlaying() {
@@ -167,7 +177,15 @@ export default function FMP4Player({ camId, authToken, onError, onPlaying }) {
       objectUrl = URL.createObjectURL(mediaSource)
       video.src = objectUrl
 
-      await new Promise((resolve) => mediaSource.addEventListener('sourceopen', resolve, { once: true }))
+      await withIdleTimeout(() => new Promise((resolve) => {
+        const done = () => {
+          mediaSource.removeEventListener('sourceopen', done)
+          controller.signal.removeEventListener('abort', done)
+          resolve()
+        }
+        mediaSource.addEventListener('sourceopen', done)
+        controller.signal.addEventListener('abort', done)
+      }), 'Не удалось подготовить видеоплеер вовремя')
       if (cancelled) return
 
       try {
@@ -186,21 +204,23 @@ export default function FMP4Player({ camId, authToken, onError, onPlaying }) {
 
       let pending = leftover
       while (!cancelled) {
-        for (;;) {
+        while (!cancelled) {
           const framed = takeSegment(pending)
           if (!framed) break
           enqueue(framed.segment)
           pending = framed.rest
         }
 
+        if (cancelled) return
         let chunk
         try {
-          chunk = await reader.read()
+          chunk = await withIdleTimeout(() => reader.read())
         } catch (e) {
           debugLog('stream', 'read error', e)
           fail('Соединение с потоком прервано')
           return
         }
+        if (cancelled) return
         if (chunk.done) {
           debugLog('stream', 'stream done')
           fail('Соединение с потоком прервано')
@@ -242,7 +262,7 @@ export default function FMP4Player({ camId, authToken, onError, onPlaying }) {
     }
 
     function handleAudioFrame(audioData) {
-      if (!audioContext) {
+      if (cancelled || !audioContext || mutedRef.current || audioContext.state !== 'running') {
         audioData.close()
         return
       }
@@ -335,7 +355,7 @@ export default function FMP4Player({ camId, authToken, onError, onPlaying }) {
 
       audioContext = new (window.AudioContext || window.webkitAudioContext)()
       gainNode = audioContext.createGain()
-      gainNode.gain.value = 0
+      gainNode.gain.value = mutedRef.current ? 0 : 1
       gainNode.connect(audioContext.destination)
       gainNodeRef.current = gainNode
 
@@ -385,12 +405,13 @@ export default function FMP4Player({ camId, authToken, onError, onPlaying }) {
         }
         let chunk
         try {
-          chunk = await reader.read()
+          chunk = await withIdleTimeout(() => reader.read())
         } catch (e) {
           debugLog('stream', 'read error', e)
           fail('Соединение с потоком прервано')
           return
         }
+        if (cancelled) return
         if (chunk.done) {
           debugLog('stream', 'stream done')
           fail('Соединение с потоком прервано')
@@ -408,7 +429,7 @@ export default function FMP4Player({ camId, authToken, onError, onPlaying }) {
       let res
       try {
         const headers = authToken ? { Authorization: `Bearer ${authToken}` } : streamAuthHeaders()
-        res = await fetch(streamUrl(camId), { headers, signal: controller.signal })
+        res = await withIdleTimeout(() => fetch(streamUrl(camId), { headers, signal: controller.signal }), 'Сервер не ответил на запрос потока вовремя')
       } catch (e) {
         debugLog('stream', 'fetch error', e)
         if (!cancelled) fail('Не удалось подключиться к потоку')
@@ -420,9 +441,10 @@ export default function FMP4Player({ camId, authToken, onError, onPlaying }) {
       const contentType = res.headers.get('content-type') || ''
       debugLog('stream', 'response', { status: res.status, contentType })
 
-      if (!contentType.startsWith('video/')) {
-        const json = await res.json().catch(() => null)
-        if (!cancelled) fail(json?.error || 'Не удалось запустить видеопоток')
+      if (!res.ok || !contentType.startsWith('video/')) {
+        const json = await withIdleTimeout(() => res.json()).catch(() => null)
+        const error = typeof json?.error === 'string' ? json.error : json?.error?.error
+        if (!cancelled) fail(typeof error === 'string' && error.trim() ? error : json?.code_detail)
         return
       }
 
@@ -439,12 +461,13 @@ export default function FMP4Player({ camId, authToken, onError, onPlaying }) {
       while (!cancelled && !moovBox) {
         let chunk
         try {
-          chunk = await reader.read()
+          chunk = await withIdleTimeout(() => reader.read())
         } catch (e) {
           debugLog('stream', 'init read error', e)
           fail('Соединение с потоком прервано')
           return
         }
+        if (cancelled) return
         if (chunk.done) {
           fail('Поток завершился раньше инициализации')
           return
@@ -499,8 +522,12 @@ export default function FMP4Player({ camId, authToken, onError, onPlaying }) {
       fail('Браузер не поддерживает воспроизведение этого потока')
     }
 
+    let cleanedUp = false
     function cleanup() {
+      if (cleanedUp) return
+      cleanedUp = true
       cancelled = true
+      clearTimeout(idleTimer)
       controller.abort()
       if (reader) reader.cancel().catch(() => {})
 
@@ -538,7 +565,7 @@ export default function FMP4Player({ camId, authToken, onError, onPlaying }) {
     video.addEventListener('error', handleVideoError)
     video.addEventListener('timeupdate', catchUpToLiveEdge)
 
-    start()
+    start().catch(() => fail('Не удалось воспроизвести поток'))
 
     return () => {
       video.removeEventListener('playing', maybeMarkPlaying)
@@ -572,7 +599,13 @@ export default function FMP4Player({ camId, authToken, onError, onPlaying }) {
         }}
       />
       <StreamStages steps={STREAM_STEPS} stage={stage} finished={stage === STREAM_STEPS.length} error={streamError?.message} failedStage={streamError?.stage} />
-      <VideoControls videoRef={videoRef} />
+      <VideoControls showControls={stage === STREAM_STEPS.length && !streamError} videoRef={videoRef} onMuteChange={(muted) => {
+        mutedRef.current = muted
+        const gain = gainNodeRef.current
+        if (!gain) return
+        gain.gain.value = muted ? 0 : 1
+        if (!muted && gain.context.state === 'suspended') gain.context.resume().catch(() => {})
+      }} />
     </div>
   )
 }

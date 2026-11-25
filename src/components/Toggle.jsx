@@ -1,7 +1,7 @@
 import { colors } from '../styles/tokens'
 
 // Простой переключатель 0/1 (enabled) в стиле пилюли.
-export default function Toggle({ checked, onChange, label, disabled, large = false }) {
+export default function Toggle({ checked, onChange, label, disabled, large = false, 'aria-label': accessibleLabel }) {
   const active = colors.statuses.green
   const inactive = colors.statuses.default
 
@@ -10,6 +10,9 @@ export default function Toggle({ checked, onChange, label, disabled, large = fal
   return (
     <button
       type="button"
+      role="switch"
+      aria-checked={Boolean(checked)}
+      aria-label={accessibleLabel ?? label}
       disabled={disabled}
       onClick={() => onChange(!checked)}
       style={{
@@ -24,7 +27,7 @@ export default function Toggle({ checked, onChange, label, disabled, large = fal
         minWidth: large ? 210 : undefined,
         minHeight: large ? 72 : undefined,
         justifyContent: large ? 'center' : undefined,
-        fontSize: large ? 16 : 11,
+        fontSize: large ? '1rem' : '0.6875rem',
         fontFamily: "'JetBrains Mono', monospace",
         letterSpacing: '0.08em',
         cursor: disabled ? 'default' : 'pointer',

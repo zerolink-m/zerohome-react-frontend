@@ -1,9 +1,6 @@
 import { request } from './client'
 import { CODES } from './codes'
-import { normalizeFrontendVersion } from '../utils/frontendVersion'
-import packageJson from '../../package.json';
-
-const FRONTEND_VERSION = normalizeFrontendVersion(import.meta.env.VITE_APP_VERSION || packageJson.version)
+import { FRONTEND_API_VERSION } from '../utils/frontendVersion'
 // GET /config?v=vMAJOR.MINOR.PATCH-Channel
 // Бэкенд решает по версии клиента:
 //   CODES.OK — актуальная версия, data.config = { version, actual_version }
@@ -13,7 +10,7 @@ const FRONTEND_VERSION = normalizeFrontendVersion(import.meta.env.VITE_APP_VERSI
 // В отличие от остальных эндпоинтов, коды обновления должны дойти до вызывающего кода,
 // поэтому используем allowNonZero (см. request() в client.js).
 export async function getConfig() {
-  const v = encodeURIComponent(FRONTEND_VERSION)
+  const v = encodeURIComponent(FRONTEND_API_VERSION)
   const { code, data } = await request(`/config?v=${v}`, { auth: false, allowNonZero: true })
   if (code === CODES.FRONTEND_UPDATE_NEEDED) return { code, version: null, actualVersion: null }
   // Любой другой код ошибки — это сбой проверки, а не «онлайн».

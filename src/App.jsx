@@ -1,7 +1,7 @@
-import { lazy, Suspense, useEffect } from 'react'
-import { Routes, Route, useLocation } from 'react-router-dom'
+import { lazy, Suspense, useEffect, useLayoutEffect, useRef } from 'react'
+import { matchPath, Routes, Route, useLocation } from 'react-router'
 import { timedImport, tlog } from './utils/timingsLog'
-import { orbTR, orbBL, colors } from './styles/tokens'
+import { orbTR, orbBL } from './styles/tokens'
 import ToastContainer from './components/ToastContainer'
 import ProtectedRoute from './components/ProtectedRoute'
 import PublicOnlyRoute from './components/PublicOnlyRoute'
@@ -12,6 +12,7 @@ import LoginPage from './pages/LoginPage'
 import RegisterPage from './pages/RegisterPage'
 import DashboardPage from './pages/DashboardPage'
 import NotFoundPage from './pages/NotFoundPage'
+import RouteErrorBoundary from './components/RouteErrorBoundary'
 
 // Ленивая загрузка тяжёлых страниц: редакторы, админка, плееры
 const CamCreatePage = lazy(timedImport('CamCreatePage', () => import('./pages/CamCreatePage')))
@@ -40,16 +41,65 @@ function RouteFallback() {
   return <Spinner style={{ padding: 24 }} />
 }
 
+const ROUTE_TITLES = {
+  '/': 'Устройства',
+  '/login': 'Вход',
+  '/register': 'Регистрация',
+  '/share/stream/:camId': 'Общий поток',
+  '/share/record/:camId': 'Общая запись',
+  '/share/switch/:switchId': 'Общий выключатель',
+  '/cams/new': 'Добавление камеры',
+  '/cams/multi-view': 'Multi-View',
+  '/cams/:id': 'Камера',
+  '/cams/:id/live': 'Прямой эфир',
+  '/cams/:id/recordings': 'Архив камеры',
+  '/switches/new': 'Добавление выключателя',
+  '/switches/:id': 'Выключатель',
+  '/connections/new': 'Добавление соединения',
+  '/connections/:id': 'Соединение',
+  '/account': 'Профиль',
+  '/setup': 'Первоначальная настройка',
+  '/admin': 'Админ-панель',
+  '/admin/users': 'Пользователи',
+  '/admin/users/:userId/sessions': 'Сессии пользователя',
+  '/admin/stats': 'Статистика',
+  '/admin/settings': 'Настройки системы',
+  '/admin/nodes': 'Ноды',
+  '/admin/cluster': 'Кластер и назначения',
+}
+
+function RouteContent({ pathname, previousPath, children }) {
+  const contentRef = useRef(null)
+
+  useLayoutEffect(() => {
+    if (previousPath.current === pathname) return
+    previousPath.current = pathname
+    const content = contentRef.current
+    const focusTarget = content.querySelector('h1') ?? content
+    if (focusTarget !== content && !focusTarget.hasAttribute('tabindex')) focusTarget.tabIndex = -1
+    focusTarget.focus({ preventScroll: true })
+  }, [pathname, previousPath])
+
+  return <div ref={contentRef} data-route-content tabIndex={-1}>{children}</div>
+}
+
 export default function App() {
   const location = useLocation()
+  const previousPath = useRef(location.pathname)
   useEffect(() => { tlog('этап', 'React смонтирован (App)') }, [])
   useEffect(() => { tlog('навигация', location.pathname) }, [location.pathname])
+  useEffect(() => {
+    const route = Object.keys(ROUTE_TITLES).find((pattern) => matchPath(pattern, location.pathname))
+    document.title = `${ROUTE_TITLES[route] || 'Страница не найдена'} · ZeroHome`
+  }, [location.pathname])
   return (
     <>
       <div style={orbTR} />
       <div style={orbBL} />
 
+      <RouteErrorBoundary pathname={location.pathname}>
       <Suspense fallback={<RouteFallback />}>
+      <RouteContent pathname={location.pathname} previousPath={previousPath}>
       <Routes>
         <Route element={<PublicOnlyRoute />}>
           <Route path="/login" element={<LoginPage />} />
@@ -89,7 +139,9 @@ export default function App() {
 
         <Route path="*" element={<NotFoundPage />} />
       </Routes>
+      </RouteContent>
       </Suspense>
+      </RouteErrorBoundary>
 
       <ToastContainer />
     </>

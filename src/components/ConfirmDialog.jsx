@@ -1,28 +1,18 @@
+import { useId } from 'react'
 import DashCard from './DashCard'
 import Button from './Button'
+import Dialog from './Dialog'
 
 export default function ConfirmDialog({ open, title, message, confirmLabel = 'Удалить', onConfirm, onCancel, loading, variant = 'accent' }) {
-  if (!open) return null
+  const descriptionId = useId()
 
   return (
-    <div
-      style={{
-        position: 'fixed',
-        inset: 0,
-        background: 'rgba(0,0,0,0.5)',
-        display: 'flex',
-        alignItems: 'center',
-        justifyContent: 'center',
-        zIndex: 200,
-      }}
-      onClick={onCancel}
-    >
-      <div onClick={(e) => e.stopPropagation()}>
+    <Dialog open={open} title={title} descriptionId={descriptionId} onClose={onCancel} blockClose={loading}>
         <DashCard style={{ maxWidth: 380 }}>
           <h3 style={{ fontSize: 16, marginBottom: 12 }}>{title}</h3>
-          <p style={{ fontSize: 13, color: 'rgba(255,255,255,0.55)', marginBottom: 24 }}>{message}</p>
-          <div style={{ display: 'flex', gap: 12, justifyContent: 'flex-end' }}>
-            <Button onClick={onCancel} disabled={loading}>
+          <p id={descriptionId} style={{ fontSize: '0.8125rem', color: 'var(--muted-text)', marginBottom: 24 }}>{message}</p>
+          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 12, justifyContent: 'flex-end' }}>
+            <Button onClick={onCancel} disabled={loading} data-dialog-initial-focus>
               Отмена
             </Button>
             <Button variant={variant} onClick={onConfirm} loading={loading}>
@@ -30,7 +20,6 @@ export default function ConfirmDialog({ open, title, message, confirmLabel = 'У
             </Button>
           </div>
         </DashCard>
-      </div>
-    </div>
+    </Dialog>
   )
 }

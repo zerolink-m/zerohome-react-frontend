@@ -1,7 +1,8 @@
 import { tlog } from './utils/timingsLog'
+import { FRONTEND_VERSION } from './utils/frontendVersion'
 import { StrictMode } from 'react'
 import { createRoot } from 'react-dom/client'
-import { BrowserRouter } from 'react-router-dom'
+import { BrowserRouter } from 'react-router'
 
 import '@fontsource/jetbrains-mono/400.css'
 import '@fontsource/jetbrains-mono/600.css'
@@ -21,7 +22,7 @@ tlog('этап', 'main.jsx: модули загружены, вызываем re
 createRoot(document.getElementById('root')).render(
   <StrictMode>
     <ThemeProvider>
-      <BrowserRouter>
+      <BrowserRouter useTransitions={false}>
         <HealthProvider>
           <ToastProvider>
             <AuthProvider>
@@ -37,7 +38,7 @@ createRoot(document.getElementById('root')).render(
 // Обновление только по согласию. Новый worker сначала полностью скачивает HTML и
 // дерево hashed assets; старый shell продолжает работать до нажатия кнопки.
 if ('serviceWorker' in navigator && import.meta.env.PROD) {
-  const v = encodeURIComponent(import.meta.env.VITE_APP_VERSION || 'dev')
+  const v = encodeURIComponent(FRONTEND_VERSION)
   window.addEventListener('load', async () => {
     try {
       const registration = await navigator.serviceWorker.register(`/sw.js?v=${v}`)

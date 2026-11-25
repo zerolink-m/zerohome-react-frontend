@@ -1,8 +1,8 @@
 import { useEffect, useState } from 'react'
 import { getAllStats } from '../api/stats'
-import { useToast } from '../context/ToastContext'
 import DashCard from '../components/DashCard'
 import SelectField from '../components/SelectField'
+import Button from '../components/Button'
 import { colors } from '../styles/tokens'
 import { useLoadGate } from '../hooks/useLoadGate'
 import PageLoader from '../components/PageLoader'
@@ -16,33 +16,42 @@ const PERIOD_OPTIONS = [
 ]
 
 export default function StatsPage() {
-  const [stats, setStats] = useState(null)
+  const [result, setResult] = useState(null)
   const [loading, setLoading] = useState(true)
   const [loadError, setLoadError] = useState(null)
   const gate = useLoadGate(loading, loadError)
   const [period, setPeriod] = useState('24')
-  const toast = useToast()
+  const [requestVersion, setRequestVersion] = useState(0)
+  const stats = result?.period === period ? result.stats : null
 
   useEffect(() => {
-    loadStats()
-    // Автообновление каждые 30 секунд
-    const interval = setInterval(loadStats, 30000)
-    return () => clearInterval(interval)
-  }, [period])
-
-  async function loadStats() {
-    try {
-      const data = await getAllStats(parseInt(period))
-      console.log('Stats loaded:', data)
-      setStats(data.data || data)
-      setLoadError(null)
-    } catch (err) {
-      console.error('Stats error:', err)
-      toast.error(err.message || 'Ошибка загрузки статистики')
-      setLoadError(err.message || 'Ошибка загрузки статистики')
-    } finally {
-      setLoading(false)
+    let active = true
+    let pending = false
+    async function loadStats() {
+      if (pending) return
+      pending = true
+      try {
+        const data = await getAllStats(Number(period))
+        if (active) {
+          setResult({ period, stats: data.data || data })
+          setLoadError(null)
+        }
+      } catch (err) {
+        if (active) setLoadError(err.message || 'Ошибка загрузки статистики')
+      } finally {
+        pending = false
+        if (active) setLoading(false)
+      }
     }
+    loadStats()
+    const interval = setInterval(loadStats, 30000)
+    return () => { active = false; clearInterval(interval) }
+  }, [period, requestVersion])
+
+  function retry() {
+    setLoadError(null)
+    setLoading(true)
+    setRequestVersion((version) => version + 1)
   }
 
   function formatBytes(bytes) {
@@ -73,43 +82,34 @@ export default function StatsPage() {
     return `${days}д ${hours}ч ${minutes}м`
   }
 
-  if (gate.busy && (!stats || gate.visible)) {
-    return (
-      <div style={{ padding: 24 }}>
-        <h1 style={{ fontSize: 24, marginBottom: 24 }}>Статистика системы</h1>
-        <PageLoader gate={gate} onRetry={() => {
-            setLoadError(null)
-            setLoading(true)
-            loadStats()
-          }} />
-      </div>
-    )
-  }
-
-  if (!stats) {
-    return (
-      <div style={{ padding: 24 }}>
-        <h1 style={{ fontSize: 24, marginBottom: 24 }}>Статистика системы</h1>
-        <div style={{ fontSize: 13, color: colors.white[4] }}>
-          Не удалось загрузить статистику. Проверьте консоль браузера для деталей.
-        </div>
-      </div>
-    )
-  }
-
   return (
     <div style={{ padding: 24 }}>
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 24 }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 12, marginBottom: 24 }}>
         <h1 style={{ fontSize: 24, margin: 0 }}>Статистика системы</h1>
         <SelectField
           label="Период для детекции движения"
           value={period}
-          onChange={(e) => setPeriod(e.target.value)}
+          onChange={(e) => {
+            setPeriod(e.target.value)
+            setResult(null)
+            setLoadError(null)
+            setLoading(true)
+          }}
           options={PERIOD_OPTIONS}
           style={{ minWidth: 180 }}
         />
       </div>
 
+      {!stats || gate.visible ? (
+        <>
+          {loading && <p role="status" className="sr-only">Загружается статистика за выбранный период</p>}
+          <PageLoader gate={gate} onRetry={retry} />
+        </>
+      ) : (
+      <>
+      {loadError && <div role="alert" style={{ marginBottom: 16, color: colors.statuses.red.text }}>
+        {loadError} <Button small onClick={retry} loading={loading}>Повторить</Button>
+      </div>}
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(min(100%, 300px), 1fr))', gap: 20 }}>
         {/* Системные ресурсы */}
         <DashCard>
@@ -438,6 +438,8 @@ export default function StatsPage() {
       <div style={{ marginTop: 16, fontSize: 11, color: colors.white[2], textAlign: 'center' }}>
         Обновляется автоматически каждые 30 секунд
       </div>
+      </>
+      )}
     </div>
   )
 }

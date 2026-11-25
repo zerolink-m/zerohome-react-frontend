@@ -19,10 +19,10 @@ const inputStyle = {
 
 // columns — whitelist доступных полей поиска для конкретного эндпоинта (users/sessions/cams)
 // labels — необязательная карта {column: человекочитаемое название} для этих же колонок
-export default function SearchBar({ columns, labels, onSearch }) {
-  const [column, setColumn] = useState(columns[0])
-  const [value, setValue] = useState('')
-  const [method, setMethod] = useState('include')
+export default function SearchBar({ columns, labels, onSearch, appliedFilter }) {
+  const [column, setColumn] = useState(appliedFilter?.search_column || columns[0])
+  const [value, setValue] = useState(appliedFilter?.search || '')
+  const [method, setMethod] = useState(appliedFilter?.search_method || 'include')
 
   function submit(e) {
     e.preventDefault()
@@ -39,15 +39,15 @@ export default function SearchBar({ columns, labels, onSearch }) {
   }
 
   return (
-    <form onSubmit={submit} style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginBottom: 16 }}>
-      <select value={column} onChange={(e) => setColumn(e.target.value)} style={selectStyle}>
+    <form role="search" onSubmit={submit} style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginBottom: 16 }}>
+      <select aria-label="Поле поиска" value={column} onChange={(e) => setColumn(e.target.value)} style={selectStyle}>
         {columns.map((c) => (
           <option key={c} value={c} style={{ background: 'var(--bg)' }}>
             {labels?.[c] ?? c}
           </option>
         ))}
       </select>
-      <select value={method} onChange={(e) => setMethod(e.target.value)} style={selectStyle}>
+      <select aria-label="Условие поиска" value={method} onChange={(e) => setMethod(e.target.value)} style={selectStyle}>
         <option value="include" style={{ background: 'var(--bg)' }}>
           содержит
         </option>
@@ -56,6 +56,7 @@ export default function SearchBar({ columns, labels, onSearch }) {
         </option>
       </select>
       <input
+        aria-label="Текст поиска"
         value={value}
         onChange={(e) => setValue(e.target.value)}
         placeholder="Поиск..."
@@ -64,7 +65,7 @@ export default function SearchBar({ columns, labels, onSearch }) {
       <Button small type="submit">
         Найти
       </Button>
-      {value && (
+      {(value || appliedFilter?.search) && (
         <Button small onClick={clear} type="button">
           Сбросить
         </Button>

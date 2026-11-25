@@ -4,30 +4,31 @@ import { useToast } from '../../context/ToastContext'
 import Toggle from '../Toggle'
 import Button from '../Button'
 
-export default function OnvifSettings({ camId, initialSettings }) {
-  const [settings, setSettings] = useState({
-    onvif_enabled: initialSettings?.onvif_enabled ?? 0,
-    onvif_snapshot_enabled: initialSettings?.onvif_snapshot_enabled ?? 0,
-    onvif_ptz_enabled: initialSettings?.onvif_ptz_enabled ?? 0
-  })
+function extractFlags(data) {
+  return {
+    onvif_enabled: data?.onvif_enabled ?? 0,
+    onvif_snapshot_enabled: data?.onvif_snapshot_enabled ?? 0,
+    onvif_ptz_enabled: data?.onvif_ptz_enabled ?? 0,
+  }
+}
+
+export default function OnvifSettings({ camId, initialSettings, onSaved }) {
+  const { onvif_enabled, onvif_snapshot_enabled, onvif_ptz_enabled } = extractFlags(initialSettings)
+  const [settings, setSettings] = useState(() => extractFlags(initialSettings))
   const [saving, setSaving] = useState(false)
   const toast = useToast()
 
   useEffect(() => {
-    if (initialSettings) {
-      setSettings({
-        onvif_enabled: initialSettings.onvif_enabled ?? 0,
-        onvif_snapshot_enabled: initialSettings.onvif_snapshot_enabled ?? 0,
-        onvif_ptz_enabled: initialSettings.onvif_ptz_enabled ?? 0
-      })
-    }
-  }, [initialSettings])
+    setSettings({ onvif_enabled, onvif_snapshot_enabled, onvif_ptz_enabled })
+  }, [onvif_enabled, onvif_snapshot_enabled, onvif_ptz_enabled])
 
   async function handleSave() {
     try {
       setSaving(true)
       const data = await patchOnvifSettings(camId, settings)
-      setSettings(data)
+      const nextSettings = extractFlags(data)
+      setSettings(nextSettings)
+      onSaved?.(nextSettings)
       toast.success('Настройки ONVIF сохранены')
     } catch (err) {
       toast.error(err.message || 'Ошибка сохранения настроек')
@@ -47,6 +48,7 @@ export default function OnvifSettings({ camId, initialSettings }) {
       <div className="setting-group">
         <Toggle
           label="Включить ONVIF"
+          disabled={saving}
           checked={Boolean(settings.onvif_enabled)}
           onChange={(checked) => updateSetting('onvif_enabled', checked ? 1 : 0)}
         />
@@ -55,14 +57,14 @@ export default function OnvifSettings({ camId, initialSettings }) {
           label="Включить ONVIF снимки"
           checked={Boolean(settings.onvif_snapshot_enabled)}
           onChange={(checked) => updateSetting('onvif_snapshot_enabled', checked ? 1 : 0)}
-          disabled={!settings.onvif_enabled}
+          disabled={saving || !settings.onvif_enabled}
         />
 
         <Toggle
           label="Включить ONVIF PTZ"
           checked={Boolean(settings.onvif_ptz_enabled)}
           onChange={(checked) => updateSetting('onvif_ptz_enabled', checked ? 1 : 0)}
-          disabled={!settings.onvif_enabled}
+          disabled={saving || !settings.onvif_enabled}
         />
       </div>
 
